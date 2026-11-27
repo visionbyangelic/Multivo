@@ -25,6 +25,8 @@
   --lavender: #191919; --lavender-muted: #8A8A8A;
   --online: #00A84F; --error: #D92D20; --outline: #E5E5E5;
   --accent: #FEE500;
+  --mine-text: #191919; --theirs-border: #E5E5E5;
+  --tab-bg: rgba(255,255,255,.97); --demo-bg: #FFFBE5;
   --tab-h: 64px;
 }
 * { box-sizing: border-box; }
@@ -32,7 +34,7 @@ html, body { margin: 0; padding: 0; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 16px; line-height: 1.45; color: var(--lavender);
-  background: #FFFFFF; min-height: 100vh;
+  background: var(--plum-950); min-height: 100vh;
   -webkit-tap-highlight-color: transparent;
 }
 h1, h2, h3 { margin: 0; }
@@ -59,13 +61,13 @@ main.no-tabs { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .brand .logo {
   width: 72px; height: 72px; margin: 0 auto 12px; border-radius: 22px;
   background: var(--accent); display: flex; align-items: center; justify-content: center;
-  font-size: 40px; font-weight: bold; color: #191919;
+  font-size: 40px; font-weight: bold; color: var(--mine-text);
 }
 .brand h1 { font-size: 32px; }
 .brand p { color: var(--lavender-muted); margin: 6px 0 0; }
 .card {
-  background: #FFFFFF;
-  border: 1px solid #EDEDED; border-radius: 20px; padding: 18px; margin-top: 16px;
+  background: var(--plum-800);
+  border: 1px solid var(--outline); border-radius: 20px; padding: 18px; margin-top: 16px;
   box-shadow: 0 1px 4px rgba(0,0,0,.05);
 }
 .card h2 { font-size: 22px; margin-bottom: 4px; }
@@ -73,7 +75,7 @@ main.no-tabs { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .btn {
   display: block; width: 100%; padding: 14px; margin-top: 16px;
   border: none; border-radius: 16px; background: var(--accent);
-  color: #191919; font-weight: 700; font-size: 16px;
+  color: var(--mine-text); font-weight: 700; font-size: 16px;
 }
 .btn.secondary { background: var(--plum-700); color: var(--lavender); border: 1px solid var(--outline); }
 .btn.ghost { background: transparent; color: var(--violet-300); border: none; padding: 10px; margin-top: 8px; }
@@ -87,11 +89,11 @@ main.no-tabs { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .error.show { display: block; }
 .note {
   margin-top: 14px; padding: 12px 14px; border-radius: 12px; font-size: 14px;
-  background: #F7F7F7; border: 1px solid var(--outline); color: var(--lavender-muted);
+  background: var(--plum-900); border: 1px solid var(--outline); color: var(--lavender-muted);
 }
 .demo-banner {
   margin-top: 12px; padding: 10px 14px; border-radius: 12px; text-align: center;
-  background: #FFFBE5;
+  background: var(--demo-bg);
   border: 1px solid var(--orchid); font-size: 14px; font-weight: 600;
 }
 .demo-banner small { color: var(--lavender-muted); }
@@ -115,13 +117,13 @@ main.no-tabs { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .list { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
 .row {
   display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-  background: #FFFFFF;
-  border: 1px solid #EFEFEF; border-radius: 18px; padding: 13px 14px; color: var(--lavender);
+  background: var(--plum-800);
+  border: 1px solid var(--outline); border-radius: 18px; padding: 13px 14px; color: var(--lavender);
 }
 .row:active { transform: scale(.99); }
 .avatar {
   width: 48px; height: 48px; border-radius: 50%; flex: none;
-  background: var(--accent); color: #191919; font-weight: 700; font-size: 18px;
+  background: var(--accent); color: var(--mine-text); font-weight: 700; font-size: 18px;
   display: flex; align-items: center; justify-content: center; position: relative;
   overflow: hidden;
 }
@@ -144,11 +146,11 @@ main.no-tabs { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
    it as one small grey line, not a boxed-off section. */
 #chat-messages { display: flex; flex-direction: column; gap: 10px; padding: 12px 0 8px; }
 .msg { max-width: 82%; padding: 10px 13px; border-radius: 18px; font-size: 16px; }
-.msg.mine { align-self: flex-end; background: #FEE500; color: #191919; border-bottom-right-radius: 6px; }
-.msg.theirs { align-self: flex-start; background: #FFFFFF; border: 1px solid #E5E5E5; color: #191919; border-bottom-left-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
-.msg .who { font-size: 12px; font-weight: 700; color: #8A8A8A; margin-bottom: 3px; }
-.msg.mine .who { color: #5C5C5C; }
-.msg .orig { margin-top: 4px; font-size: 12px; color: #8A8A8A; }
+.msg.mine { align-self: flex-end; background: var(--accent); color: var(--mine-text); border-bottom-right-radius: 6px; }
+.msg.theirs { align-self: flex-start; background: var(--plum-800); border: 1px solid var(--theirs-border); color: var(--lavender); border-bottom-left-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+.msg .who { font-size: 12px; font-weight: 700; color: var(--lavender-muted); margin-bottom: 3px; }
+.msg.mine .who { color: var(--mine-text); opacity: .65; }
+.msg .orig { margin-top: 4px; font-size: 12px; color: var(--lavender-muted); }
 .msg .time { font-size: 11px; opacity: .6; margin-top: 4px; text-align: right; }
 .typing { color: var(--lavender-muted); font-size: 13px; font-style: italic; padding: 2px 4px; min-height: 20px; }
 .composer {
@@ -161,7 +163,7 @@ main.no-tabs { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 /* Bottom tab bar — thumb friendly, always visible on the main screens. */
 #tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
-  background: rgba(255,255,255,.97); border-top: 1px solid #E5E5E5;
+  background: var(--tab-bg); border-top: 1px solid var(--outline);
   padding-bottom: env(safe-area-inset-bottom);
 }
 #tabs .inner { max-width: 560px; margin: 0 auto; display: flex; height: var(--tab-h); }
@@ -180,9 +182,9 @@ main.no-tabs { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 #tabs.hidden { display: none; }
 
 /* Auth tabs + small helpers. */
-.seg { display: flex; background: #F0F0F0; border-radius: 12px; padding: 4px; margin-top: 16px; }
+.seg { display: flex; background: var(--plum-700); border-radius: 12px; padding: 4px; margin-top: 16px; }
 .seg button { flex: 1; background: none; border: none; color: var(--lavender-muted); padding: 10px; border-radius: 9px; font-weight: 600; }
-.seg button.active { background: var(--accent); color: #191919; }
+.seg button.active { background: var(--accent); color: var(--mine-text); }
 .check-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
 .check-row input { width: auto; accent-color: var(--violet-500); }
 .notif.unread { border-color: var(--orchid); }

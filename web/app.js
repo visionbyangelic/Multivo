@@ -42,12 +42,74 @@ const LANG_FLAG = {
 // A person's picture when they set one, initials in a yellow circle when
 // they did not. `user` is a PublicUser, Participant or UserProfile.
 function avatarHtml(user, title, online) {
-  const pic = user && user.profilePicture;
+  const pic = user && (user.profilePicture || picFor(user));
   const inner = pic
     ? '<img src="' + esc(pic) + '" alt="">'
     : esc(initials(title || (user && user.fullName) || '?'));
   return '<span class="avatar">' + inner +
     (online ? '<span class="dot on"></span>' : '') + '</span>';
+}
+// The server's conversation participants do not carry a picture yet, so
+// for a live chat we fetch the other person's public profile once and
+// remember it. Demo mode never calls this (there is no server).
+const picCache = {}; // userId -> profilePicture url ('' when they have none)
+function picFor(user) {
+  if (!user) return null;
+  const id = user.userId || user.id;
+  return (id && picCache[id]) || null;
+}
+async function ensurePic(user) {
+  if (!user || store.demo) return;
+  const id = user.userId || user.id;
+  if (!id || user.profilePicture || picCache[id] !== undefined) return;
+  picCache[id] = '';
+  try {
+    const pub = await api('/users/' + id);
+    picCache[id] = pub.profilePicture || '';
+    if (currentView === 'chats') renderChats();
+  } catch (e) { /* picture stays initials */ }
+}
+
+// ---------- themes ----------
+// KakaoTalk is the default — that is the look Angelic asked to copy.
+// The choice is saved on this phone (localStorage) so it survives
+// closing and reopening the app, and it is applied on every start.
+const THEMES = {
+  kakao: { label: 'KakaoTalk', accent: '#FEE500', bg: '#FFFFFF', surface: '#FFFFFF',
+           soft: '#F7F7F7', ink: '#191919', muted: '#8A8A8A', mineText: '#191919',
+           theirsBorder: '#E5E5E5', line: '#E5E5E5', tabBg: 'rgba(255,255,255,.97)', demoBg: '#FFFBE5' },
+  line:  { label: 'LINE', accent: '#06C755', bg: '#FFFFFF', surface: '#FFFFFF',
+           soft: '#F7F7F7', ink: '#191919', muted: '#8A8A8A', mineText: '#FFFFFF',
+           theirsBorder: '#E5E5E5', line: '#E5E5E5', tabBg: 'rgba(255,255,255,.97)', demoBg: '#EAFBF0' },
+  plum:  { label: 'Plum (dark)', accent: '#8B6CFF', bg: '#150E24', surface: '#241A3D',
+           soft: '#1C1430', ink: '#EEE8FF', muted: '#A99DCB', mineText: '#FFFFFF',
+           theirsBorder: '#5E4F86', line: '#5E4F86', tabBg: 'rgba(21,14,36,.97)', demoBg: '#2F234F' },
+};
+function currentTheme() {
+  const saved = localStorage.getItem('mv_theme');
+  return THEMES[saved] ? saved : 'kakao';
+}
+function applyTheme(name) {
+  const t = THEMES[name] || THEMES.kakao;
+  const r = document.documentElement.style;
+  r.setProperty('--accent', t.accent);
+  r.setProperty('--plum-950', t.bg);
+  r.setProperty('--plum-900', t.soft);
+  r.setProperty('--plum-800', t.surface);
+  r.setProperty('--plum-700', t.soft);
+  r.setProperty('--lavender', t.ink);
+  r.setProperty('--lavender-muted', t.muted);
+  r.setProperty('--violet-300', t.ink);
+  r.setProperty('--violet-400', t.accent);
+  r.setProperty('--violet-500', t.accent);
+  r.setProperty('--orchid', t.accent);
+  r.setProperty('--outline', t.line);
+  r.setProperty('--mine-text', t.mineText);
+  r.setProperty('--theirs-border', t.theirsBorder);
+  r.setProperty('--tab-bg', t.tabBg);
+  r.setProperty('--demo-bg', t.demoBg);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', t.accent);
 }
 function timeAgo(iso) {
   if (!iso) return '';
@@ -142,8 +204,9 @@ async function translateFree(msg) {
 // demo feels like the real app. Times are relative to "now" when loaded.
 function minutesAgo(m) { return new Date(Date.now() - m * 60000).toISOString(); }
 const DEMO = {
-  me: { id: 'me', username: 'ada', fullName: 'Ada Obi', email: 'ada@example.com',
-        bio: 'Lagos · coffee · languages', preferredLanguage: 'en', isOnline: true },
+  me: { id: 'me', username: 'angelic', fullName: 'Angelic', email: 'angelic@example.com',
+        bio: 'Lagos · coffee · languages', profilePicture: 'https://multivo-web.vercel.app/avatars/angelic.svg',
+        preferredLanguage: 'en', isOnline: true },
   users: [
     { id: 'u1', username: 'amelie', fullName: 'Amélie Laurent', profilePicture: null, preferredLanguage: 'fr', isOnline: true, relationship: 'contact' },
     { id: 'u2', username: 'diego', fullName: 'Diego Ramírez', profilePicture: null, preferredLanguage: 'es', isOnline: false, relationship: 'contact' },
@@ -154,27 +217,27 @@ const DEMO = {
   ],
   requests: [
     { id: 'r1', sender: { id: 'u6', username: 'kemi', fullName: 'Kemi Adeyemi', profilePicture: null, preferredLanguage: 'en', isOnline: true },
-      receiver: { id: 'me', username: 'ada', fullName: 'Ada Obi', profilePicture: null, preferredLanguage: 'en', isOnline: true },
+      receiver: { id: 'me', username: 'angelic', fullName: 'Angelic', profilePicture: null, preferredLanguage: 'en', isOnline: true },
       status: 'pending', createdAt: minutesAgo(30) },
   ],
   conversations: [
     { id: 'c1', title: 'Amélie Laurent', isGroup: false, createdBy: 'me', createdAt: minutesAgo(600), updatedAt: minutesAgo(2),
       participants: [
-        { userId: 'me', username: 'ada', fullName: 'Ada Obi', preferredLanguage: 'en', isOnline: true },
+        { userId: 'me', username: 'angelic', fullName: 'Angelic', preferredLanguage: 'en', isOnline: true },
         { userId: 'u1', username: 'amelie', fullName: 'Amélie Laurent', preferredLanguage: 'fr', isOnline: true },
       ],
-      lastMessage: { id: 'm4', conversationId: 'c1', senderId: 'me', senderName: 'Ada Obi', originalText: 'See you there 🙌', originalLanguage: 'en', translatedText: null, targetLanguage: null, createdAt: minutesAgo(2) },
+      lastMessage: { id: 'm4', conversationId: 'c1', senderId: 'me', senderName: 'Angelic', originalText: 'See you there 🙌', originalLanguage: 'en', translatedText: null, targetLanguage: null, createdAt: minutesAgo(2) },
       unreadCount: 0 },
     { id: 'c2', title: 'Diego Ramírez', isGroup: false, createdBy: 'u2', createdAt: minutesAgo(3000), updatedAt: minutesAgo(90),
       participants: [
-        { userId: 'me', username: 'ada', fullName: 'Ada Obi', preferredLanguage: 'en', isOnline: true },
+        { userId: 'me', username: 'angelic', fullName: 'Angelic', preferredLanguage: 'en', isOnline: true },
         { userId: 'u2', username: 'diego', fullName: 'Diego Ramírez', preferredLanguage: 'es', isOnline: false },
       ],
       lastMessage: { id: 'm9', conversationId: 'c2', senderId: 'u2', senderName: 'Diego Ramírez', originalText: '¿Mañana a las diez?', originalLanguage: 'es', translatedText: 'Tomorrow at ten?', targetLanguage: 'en', createdAt: minutesAgo(90) },
       unreadCount: 2 },
     { id: 'c3', title: 'Weekend trip', isGroup: true, createdBy: 'me', createdAt: minutesAgo(5000), updatedAt: minutesAgo(1500),
       participants: [
-        { userId: 'me', username: 'ada', fullName: 'Ada Obi', preferredLanguage: 'en', isOnline: true },
+        { userId: 'me', username: 'angelic', fullName: 'Angelic', preferredLanguage: 'en', isOnline: true },
         { userId: 'u1', username: 'amelie', fullName: 'Amélie Laurent', preferredLanguage: 'fr', isOnline: true },
         { userId: 'u3', username: 'yuki', fullName: 'Yuki Tanaka', preferredLanguage: 'ja', isOnline: true },
       ],
@@ -183,13 +246,13 @@ const DEMO = {
   ],
   messages: {
     c1: [
-      { id: 'm1', conversationId: 'c1', senderId: 'u1', senderName: 'Amélie Laurent', originalText: 'Salut Ada ! Tu es libre ce soir ?', originalLanguage: 'fr', translatedText: 'Hi Ada! Are you free tonight?', targetLanguage: 'en', createdAt: minutesAgo(42) },
-      { id: 'm2', conversationId: 'c1', senderId: 'me', senderName: 'Ada Obi', originalText: 'Yes! Dinner at 8?', originalLanguage: 'en', translatedText: null, targetLanguage: null, createdAt: minutesAgo(40) },
+      { id: 'm1', conversationId: 'c1', senderId: 'u1', senderName: 'Amélie Laurent', originalText: 'Salut Angelic ! Tu es libre ce soir ?', originalLanguage: 'fr', translatedText: 'Hi Angelic! Are you free tonight?', targetLanguage: 'en', createdAt: minutesAgo(42) },
+      { id: 'm2', conversationId: 'c1', senderId: 'me', senderName: 'Angelic', originalText: 'Yes! Dinner at 8?', originalLanguage: 'en', translatedText: null, targetLanguage: null, createdAt: minutesAgo(40) },
       { id: 'm3', conversationId: 'c1', senderId: 'u1', senderName: 'Amélie Laurent', originalText: 'Parfait, je réserve une table près du port.', originalLanguage: 'fr', translatedText: "Perfect, I'll book a table near the harbour.", targetLanguage: 'en', createdAt: minutesAgo(38) },
-      { id: 'm4', conversationId: 'c1', senderId: 'me', senderName: 'Ada Obi', originalText: 'See you there 🙌', originalLanguage: 'en', translatedText: null, targetLanguage: null, createdAt: minutesAgo(2) },
+      { id: 'm4', conversationId: 'c1', senderId: 'me', senderName: 'Angelic', originalText: 'See you there 🙌', originalLanguage: 'en', translatedText: null, targetLanguage: null, createdAt: minutesAgo(2) },
     ],
     c2: [
-      { id: 'm8', conversationId: 'c2', senderId: 'me', senderName: 'Ada Obi', originalText: 'Hola Diego, long time!', originalLanguage: 'en', translatedText: null, targetLanguage: null, createdAt: minutesAgo(100) },
+      { id: 'm8', conversationId: 'c2', senderId: 'me', senderName: 'Angelic', originalText: 'Hola Diego, long time!', originalLanguage: 'en', translatedText: null, targetLanguage: null, createdAt: minutesAgo(100) },
       { id: 'm9', conversationId: 'c2', senderId: 'u2', senderName: 'Diego Ramírez', originalText: '¿Mañana a las diez?', originalLanguage: 'es', translatedText: 'Tomorrow at ten?', targetLanguage: 'en', createdAt: minutesAgo(90) },
     ],
     c3: [
@@ -596,11 +659,11 @@ function showAuth() {
     $('#seg-login').classList.toggle('active', authMode === 'login');
     $('#seg-register').classList.toggle('active', authMode === 'register');
     $('#auth-fields').innerHTML = authMode === 'login'
-      ? '<label for="f-identifier">Username or email</label><input id="f-identifier" autocomplete="username" placeholder="ada">' +
+      ? '<label for="f-identifier">Username or email</label><input id="f-identifier" autocomplete="username" placeholder="angelic">' +
         '<label for="f-password">Password</label><input id="f-password" type="password" autocomplete="current-password" placeholder="••••••••">'
-      : '<label for="f-username">Username</label><input id="f-username" autocomplete="username" placeholder="ada">' +
-        '<label for="f-fullname">Full name</label><input id="f-fullname" autocomplete="name" placeholder="Ada Obi">' +
-        '<label for="f-email">Email</label><input id="f-email" type="email" autocomplete="email" placeholder="ada@example.com">' +
+      : '<label for="f-username">Username</label><input id="f-username" autocomplete="username" placeholder="angelic">' +
+        '<label for="f-fullname">Full name</label><input id="f-fullname" autocomplete="name" placeholder="Angelic">' +
+        '<label for="f-email">Email</label><input id="f-email" type="email" autocomplete="email" placeholder="angelic@example.com">' +
         '<label for="f-password">Password</label><input id="f-password" type="password" autocomplete="new-password" placeholder="At least 8 characters">' +
         '<label for="f-lang">I read messages in</label><select id="f-lang">' +
         (state.languages || FALLBACK_LANGUAGES).map((l) => '<option value="' + esc(l.code) + '">' + esc(l.name) + '</option>').join('') + '</select>' +
@@ -661,6 +724,7 @@ function renderChats() {
     const text = last ? (last.translatedText || freeTranslations[last.id] || last.originalText) : 'No messages yet';
     if (last && !last.translatedText) translateFree(last);
     const other = c.isGroup ? null : c.participants.find((p) => p.userId !== (state.me && state.me.id));
+    if (other) ensurePic(other); // fetch their picture if the server did not send one
     const online = c.isGroup ? c.participants.some((p) => p.isOnline && p.userId !== (state.me && state.me.id)) : (other && other.isOnline);
     return '<button class="row" data-id="' + esc(c.id) + '">' +
       avatarHtml(other, c.title, online) +
@@ -935,6 +999,10 @@ async function showProfile() {
       '<option value="' + esc(l.code) + '"' + (l.code === me.preferredLanguage ? ' selected' : '') + '>' + esc(l.name) + '</option>').join('') +
     '</select><div class="error" id="profile-error"></div>' +
     '<button class="btn" id="btn-save-profile">Save profile</button></div>' +
+    '<div class="card"><h2>Theme</h2>' +
+    '<label for="p-theme">App theme</label><select id="p-theme">' +
+    Object.keys(THEMES).map((k) => '<option value="' + k + '"' + (k === currentTheme() ? ' selected' : '') + '>' + esc(THEMES[k].label) + '</option>').join('') +
+    '</select><small>KakaoTalk is the default. Your choice is saved on this phone.</small></div>' +
     '<div class="card"><h2>Server</h2>' +
     '<p style="color:var(--lavender-muted);font-size:14px;margin:6px 0">' + (store.demo ? 'Demo mode — no server.' : 'Connected to<br><code>' + esc(store.serverUrl) + '</code>') + '</p>' +
     '<button class="btn secondary" id="btn-change-server">Change server</button>' +
@@ -952,6 +1020,10 @@ async function showProfile() {
   };
   $('#btn-change-server').onclick = () => { store.token = ''; disconnectWS(); showServer(); };
   $('#btn-signout').onclick = () => signOut();
+  $('#p-theme').onchange = (e) => {
+    localStorage.setItem('mv_theme', e.target.value);
+    applyTheme(e.target.value);
+  };
 }
 
 // ---------- tabs + start ----------
@@ -980,6 +1052,7 @@ function enterDemo() {
 // real server; a saved demo resumes into the demo; everyone else opens
 // straight into the demo chats — no server setup screen first.
 (async function init() {
+  applyTheme(currentTheme());
   if (store.demo) { enterDemo(); return; }
   if (store.serverUrl && store.token) { await enterApp(); return; }
   enterDemo();

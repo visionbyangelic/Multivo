@@ -289,7 +289,7 @@ class ConversationRepository {
     private fun participantsFor(c: Connection, conversationIds: List<UUID>): Map<UUID, List<Participant>> =
         c.queryList(
             """
-            SELECT p.conversation_id, u.id, u.username, u.full_name, u.preferred_language, u.is_online
+            SELECT p.conversation_id, u.id, u.username, u.full_name, u.preferred_language, u.is_online, u.profile_picture
             FROM conversation_participants p
             JOIN app_users u ON u.id = p.user_id
             WHERE p.conversation_id = ANY (?)
@@ -302,7 +302,8 @@ class ConversationRepository {
                 username = rs.getString("username"),
                 fullName = rs.getString("full_name"),
                 preferredLanguage = rs.getString("preferred_language"),
-                isOnline = rs.getBoolean("is_online")
+                isOnline = rs.getBoolean("is_online"),
+                profilePicture = rs.getString("profile_picture")
             )
         }.groupBy({ it.first }, { it.second })
 

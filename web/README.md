@@ -66,14 +66,23 @@ Korean) and the app translates for you.
 Their pictures live in `avatars/` (`chinese.svg`, `french.svg`,
 `korean.svg`) — generated images, shrunk and wrapped in SVG so they
 can be pushed to GitHub as text files. The originals are kept outside
-the repo.
+the repo. The chat list shows their pictures: the server's conversation
+participants now carry `profilePicture` (server change, 27 Nov 2026),
+and the app also fetches a contact's public profile once as a fallback,
+so a picture shows even before that server build ships.
+
+## Themes
+
+Profile → Theme. KakaoTalk yellow is the default (the look this app
+copies); LINE green and a dark Plum are the other choices. The choice
+is saved on the phone (localStorage) and applied on every start.
 
 ## Files
 
 - `index.html` — the page (inline CSS in KakaoTalk style, iOS meta tags, bottom tab bar)
 - `app.js` — all the logic: server settings, auth, chats, live WebSocket,
-  contacts, groups, notifications, profile, demo mode, free in-browser
+  contacts, groups, notifications, profile, themes, demo mode, free in-browser
   translation fallback
 - `manifest.json`, `icon.svg` — Home Screen name, colours and icon
 - `avatars/` — cute pictures for the AI test partners (`chinese.svg`,
-  `french.svg`, `korean.svg`)
+  `french.svg`, `korean.svg`) and for Angelic (`angelic.svg`)

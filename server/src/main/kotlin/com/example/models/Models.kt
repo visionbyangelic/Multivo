@@ -117,7 +117,10 @@ data class Participant(
     val username: String,
     val fullName: String,
     val preferredLanguage: String,
-    val isOnline: Boolean
+    val isOnline: Boolean,
+    // Added 27 Nov 2026: the chat list needs the other person's picture,
+    // and the Android app reads it the same way. Null when unset.
+    val profilePicture: String? = null
 )
 
 @Serializable
