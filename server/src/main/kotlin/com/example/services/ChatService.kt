@@ -72,21 +72,41 @@ class ChatService(
     }
 
     /**
-     * Saves a message, translates it into every recipient's preferred language
-     * and pushes it to everyone in the conversation in real time.
+     * Saves a message, translates its text into every recipient's preferred
+     * language and pushes it to everyone in the conversation in real time.
+     *
+     * A message needs text or media — a voice note, a photo or a sticker
+     * can travel without any text at all. Media is never translated (there
+     * is nothing to translate), and it is capped at about 1.5 MB decoded so
+     * one upload cannot fill the free database.
      */
-    suspend fun sendMessage(senderId: UUID, conversationId: UUID, text: String, language: String?): ChatMessage {
+    suspend fun sendMessage(
+        senderId: UUID,
+        conversationId: UUID,
+        text: String,
+        language: String?,
+        audioData: String? = null,
+        imageData: String? = null,
+        stickerId: String? = null
+    ): ChatMessage {
         val body = text.trim()
-        require(body.isNotEmpty() && body.length <= 10_000) { "Message must be between 1 and 10,000 characters." }
+        require(body.length <= 10_000) { "Message must be at most 10,000 characters." }
+        require(body.isNotEmpty() || audioData != null || imageData != null || stickerId != null) {
+            "Message needs text, a voice note, a photo or a sticker."
+        }
+        require((audioData?.length ?: 0) <= 2_000_000) { "Voice note is too large." }
+        require((imageData?.length ?: 0) <= 2_000_000) { "Photo is too large." }
         val sourceLanguage = language?.takeIf { it.isNotBlank() }?.let(::normalizeLanguage)
 
         requireParticipant(conversationId, senderId)
 
-        val saved = io { conversations.insertMessage(conversationId, senderId, body, sourceLanguage) }
+        val saved = io {
+            conversations.insertMessage(conversationId, senderId, body, sourceLanguage, audioData, imageData, stickerId)
+        }
         val messageId = UUID.fromString(saved.id)
         val recipients = io { conversations.recipients(conversationId, senderId) }
 
-        if (translator.isEnabled) {
+        if (translator.isEnabled && body.isNotEmpty()) {
             translateForRecipients(messageId, body, sourceLanguage, recipients)
         }
 

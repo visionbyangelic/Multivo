@@ -4,6 +4,7 @@ import com.example.config.AppConfig
 import com.example.database.DatabaseFactory
 import com.example.models.ApiError
 import com.example.repositories.NotificationRepository
+import com.example.repositories.StoryRepository
 import com.example.repositories.UserRepository
 import com.example.routes.AUTH_JWT
 import com.example.routes.authRoutes
@@ -11,6 +12,7 @@ import com.example.routes.contactRoutes
 import com.example.routes.conversationRoutes
 import com.example.routes.healthRoutes
 import com.example.routes.notificationRoutes
+import com.example.routes.storyRoutes
 import com.example.routes.userRoutes
 import com.example.routes.webSocketRoutes
 import com.example.security.JwtConfig
@@ -173,6 +175,7 @@ fun Application.module(
         userRoutes(users)
         contactRoutes(contactService)
         conversationRoutes(chatService)
+        storyRoutes(StoryRepository())
         notificationRoutes(notifications)
         webSocketRoutes(jwt, users, chatService)
     }

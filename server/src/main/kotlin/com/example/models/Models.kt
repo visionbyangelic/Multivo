@@ -107,8 +107,16 @@ data class CreateGroupConversationRequest(
 
 @Serializable
 data class SendMessageRequest(
-    val text: String,
-    val originalLanguage: String? = null
+    // Empty for a media-only message (a voice note, a photo, a sticker).
+    val text: String = "",
+    val originalLanguage: String? = null,
+    // Base64 audio (webm/opus from the app's recorder) — never translated.
+    val audioData: String? = null,
+    // Base64 image (JPEG, resized by the app before upload) — never translated.
+    val imageData: String? = null,
+    // One of the seven animal stickers: chinese, french, korean, english,
+    // spanish, japanese, german. The app draws it from its own pictures.
+    val stickerId: String? = null
 )
 
 @Serializable
@@ -134,7 +142,37 @@ data class ChatMessage(
     /** Translation into the *viewer's* language, if one was made. */
     val translatedText: String? = null,
     val targetLanguage: String? = null,
-    val createdAt: String
+    val createdAt: String,
+    // Media rides on the message: a voice note, a photo, a sticker.
+    val audioData: String? = null,
+    val imageData: String? = null,
+    val stickerId: String? = null,
+    // Who has read this message (other participants only — the sender
+    // does not need a receipt for their own message). Built from each
+    // participant's last_read_at, so it stays true without a separate call.
+    val readBy: List<String> = emptyList()
+)
+
+// ---------- Stories (Moments) ----------
+
+@Serializable
+data class Story(
+    val id: String,
+    val userId: String,
+    val fullName: String,
+    val profilePicture: String? = null,
+    val caption: String? = null,
+    val imageData: String? = null,
+    val captionLanguage: String? = null,
+    val createdAt: String,
+    val expiresAt: String
+)
+
+@Serializable
+data class CreateStoryRequest(
+    val caption: String? = null,
+    val imageData: String? = null,
+    val captionLanguage: String? = null
 )
 
 @Serializable

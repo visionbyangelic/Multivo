@@ -127,15 +127,24 @@ class ConversationRepository {
         loadSummaries(c, userId, conversationId).firstOrNull()
     }
 
-    fun insertMessage(conversationId: UUID, senderId: UUID, text: String, language: String?): ChatMessage =
+    fun insertMessage(
+        conversationId: UUID,
+        senderId: UUID,
+        text: String,
+        language: String?,
+        audioData: String? = null,
+        imageData: String? = null,
+        stickerId: String? = null
+    ): ChatMessage =
         Db.transaction { c ->
             val id = c.querySingle(
                 """
-                INSERT INTO messages (conversation_id, sender_id, original_text, original_language)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO messages (conversation_id, sender_id, original_text, original_language,
+                                      audio_data, image_data, sticker_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
                 """.trimIndent(),
-                conversationId, senderId, text, language
+                conversationId, senderId, text, language, audioData, imageData, stickerId
             ) { it.uuid("id") }!!
 
             c.execute("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", conversationId)
@@ -184,7 +193,15 @@ class ConversationRepository {
     private val messageSelect = """
         SELECT m.id, m.conversation_id, m.sender_id, su.full_name AS sender_name,
                m.original_text, m.original_language, m.created_at,
-               mt.translated_text, mt.target_language
+               m.audio_data, m.image_data, m.sticker_id,
+               mt.translated_text, mt.target_language,
+               -- Everyone except the sender whose last_read_at is at or
+              -- after this message was sent has read it.
+              (SELECT COALESCE(array_agg(p.user_id::text), '{}'::text[])
+                 FROM conversation_participants p
+                WHERE p.conversation_id = m.conversation_id
+                  AND p.user_id <> m.sender_id
+                  AND p.last_read_at >= m.created_at) AS read_by
         FROM messages m
         JOIN app_users su ON su.id = m.sender_id
         LEFT JOIN message_translations mt ON mt.message_id = m.id AND mt.recipient_id = ?
@@ -221,6 +238,7 @@ class ConversationRepository {
                        AND um.created_at > COALESCE(me.last_read_at, me.joined_at)) AS unread,
                    lm.id AS lm_id, lm.sender_id AS lm_sender_id, lu.full_name AS lm_sender_name,
                    lm.original_text AS lm_text, lm.original_language AS lm_language,
+                   lm.audio_data AS lm_audio, lm.image_data AS lm_image, lm.sticker_id AS lm_sticker,
                    lm.created_at AS lm_created_at,
                    lt.translated_text AS lm_translated, lt.target_language AS lm_target
             FROM conversation_participants me
@@ -257,7 +275,10 @@ class ConversationRepository {
                         originalLanguage = rs.getString("lm_language"),
                         translatedText = rs.getString("lm_translated"),
                         targetLanguage = rs.getString("lm_target"),
-                        createdAt = rs.instant("lm_created_at")
+                        createdAt = rs.instant("lm_created_at"),
+                        audioData = rs.getString("lm_audio"),
+                        imageData = rs.getString("lm_image"),
+                        stickerId = rs.getString("lm_sticker")
                     )
                 }
             )
@@ -327,6 +348,16 @@ class ConversationRepository {
         originalLanguage = getString("original_language"),
         translatedText = getString("translated_text"),
         targetLanguage = getString("target_language"),
-        createdAt = instant("created_at")
+        createdAt = instant("created_at"),
+        audioData = getString("audio_data"),
+        imageData = getString("image_data"),
+        stickerId = getString("sticker_id"),
+        readBy = readBy()
     )
+
+    /** The read_by column is a Postgres text[] — an empty array, never null. */
+    private fun ResultSet.readBy(): List<String> {
+        val array = getArray("read_by") ?: return emptyList()
+        return (array.array as? Array<*>)?.filterIsInstance<String>() ?: emptyList()
+    }
 }

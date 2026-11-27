@@ -9,10 +9,12 @@ import com.example.models.HealthResponse
 import com.example.models.LoginRequest
 import com.example.models.MessageResponse
 import com.example.models.RegisterRequest
+import com.example.models.CreateStoryRequest
 import com.example.models.SendMessageRequest
 import com.example.models.SocketEvent
 import com.example.models.UpdateProfileRequest
 import com.example.repositories.NotificationRepository
+import com.example.repositories.StoryRepository
 import com.example.repositories.UserRepository
 import com.example.security.JwtConfig
 import com.example.services.AuthService
@@ -189,7 +191,10 @@ fun Route.conversationRoutes(chat: ChatService) {
                     call.currentUserId(),
                     call.uuidParameter("id"),
                     request.text,
-                    request.originalLanguage
+                    request.originalLanguage,
+                    request.audioData,
+                    request.imageData,
+                    request.stickerId
                 )
                 call.respond(HttpStatusCode.Created, message)
             }
@@ -214,6 +219,44 @@ fun Route.notificationRoutes(notifications: NotificationRepository) {
                 val ok = io { notifications.markRead(call.currentUserId(), call.uuidParameter("id")) }
                 if (!ok) throw NotFoundException("Notification not found.")
                 call.respond(MessageResponse("Notification marked as read."))
+            }
+        }
+    }
+}
+
+/**
+ * Stories (Moments): post a photo and/or a caption in your language, see
+ * the feed of the people you chat with. Stories live for 24 hours — the
+ * feed query only returns ones that have not expired yet.
+ */
+fun Route.storyRoutes(stories: StoryRepository) {
+    authenticate(AUTH_JWT) {
+        route("/stories") {
+            get("/feed") { call.respond(io { stories.feedFor(call.currentUserId()) }) }
+
+            post {
+                val request = call.receive<CreateStoryRequest>()
+                val caption = request.caption?.trim().orEmpty()
+                require(caption.isNotEmpty() || request.imageData != null) {
+                    "A story needs a caption, a photo, or both."
+                }
+                require(caption.length <= 500) { "Caption must be at most 500 characters." }
+                require((request.imageData?.length ?: 0) <= 2_000_000) { "Photo is too large." }
+                val story = io {
+                    stories.create(
+                        call.currentUserId(),
+                        caption.ifEmpty { null },
+                        request.imageData,
+                        request.captionLanguage?.takeIf { it.isNotBlank() }?.let(::normalizeLanguage)
+                    )
+                } ?: throw NotFoundException("Could not save the story.")
+                call.respond(HttpStatusCode.Created, story)
+            }
+
+            delete("/{id}") {
+                val ok = io { stories.delete(call.currentUserId(), call.uuidParameter("id")) }
+                if (!ok) throw NotFoundException("Story not found.")
+                call.respond(MessageResponse("Story deleted."))
             }
         }
     }
