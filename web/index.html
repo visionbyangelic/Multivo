@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <!-- iPhone: full-screen when added to the Home Screen, notch-aware. -->
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#FEE500">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -38,12 +38,17 @@ html, body { margin: 0; padding: 0; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 16px; line-height: 1.45; color: var(--lavender);
-  background: var(--plum-950); min-height: 100vh;
+  background: var(--plum-950); height: 100%;
   -webkit-tap-highlight-color: transparent;
 }
-/* Never let any row or bubble push the page wider than the screen —
-   on iOS that reads as the whole app being zoomed in and un-fittable. */
-html, body { overflow-x: hidden; }
+/* The page itself must never scroll. On iOS, the moment the keyboard
+   opens Safari scrolls the whole page to bring the focused field into
+   view — the chat header and the messages slide off the top and the
+   composer floats mid-screen with a big empty gap above it. Every screen
+   scrolls inside the app instead (main scrolls, the message list scrolls),
+   and app.js sizes the app to the visible area the keyboard leaves. */
+html { -webkit-text-size-adjust: 100%; }
+html, body { height: 100%; overflow: hidden; }
 h1, h2, h3 { margin: 0; }
 a { color: var(--violet-300); }
 button { font: inherit; cursor: pointer; }
@@ -58,9 +63,12 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--violet-400)
 label { display: block; font-size: 14px; color: var(--lavender-muted); margin: 14px 0 6px; }
 small { color: var(--lavender-muted); font-size: 13px; line-height: 1.5; display: block; }
 
-/* Layout: one phone-width column, safe areas for the notch / home bar. */
-#app { max-width: 560px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
-main { flex: 1; padding: calc(12px + env(safe-area-inset-top)) 16px calc(var(--tab-h) + 24px + env(safe-area-inset-bottom)); }
+/* Layout: one phone-width column, safe areas for the notch / home bar.
+   The app is exactly one screen tall (app.js sets the exact pixel height
+   from the visible area when the keyboard is open); the main screens
+   scroll inside it, they never scroll the page. */
+#app { max-width: 560px; margin: 0 auto; height: 100%; height: 100dvh; display: flex; flex-direction: column; }
+main { flex: 1; min-height: 0; overflow-y: auto; padding: calc(12px + env(safe-area-inset-top)) 16px calc(var(--tab-h) + 24px + env(safe-area-inset-bottom)); }
 main.no-tabs { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .view { display: none; }
 .view.active { display: block; animation: fade .3s ease; }
@@ -155,7 +163,7 @@ main.no-tabs { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
    scrolls, and the composer is pinned at the bottom. The room itself wears
    the theme: a patterned background and coloured bubbles, the way the
    KakaoTalk and LINE themes Angelic sent look. */
-main.chat-view { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; padding: 0; }
+main.chat-view { display: flex; flex-direction: column; height: 100%; overflow: hidden; padding: 0; }
 main.chat-view .chat-head { flex: none; display: flex; align-items: center; gap: 10px;
   background: var(--head-bg); color: var(--head-text);
   padding: calc(10px + env(safe-area-inset-top)) 12px 10px; }
@@ -189,7 +197,7 @@ main.chat-view .typing { flex: none; color: var(--lavender-muted); font-size: 13
 main.chat-view .composer { flex: none; display: flex; gap: 8px;
   padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
   position: static; background: var(--plum-800); border-top: 1px solid var(--outline); }
-.composer input { flex: 1; border-radius: 99px; }
+.composer input { flex: 1; border-radius: 99px; font-size: 16px; /* 16px, stated again here on purpose: below 16px iOS Safari zooms the whole page when the field is tapped */ }
 .composer button { width: auto; border-radius: 99px; padding: 12px 20px; margin: 0; }
 .composer button:disabled { opacity: .55; }
 

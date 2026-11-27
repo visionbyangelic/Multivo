@@ -24,6 +24,36 @@ const $ = (sel, root) => (root || document).querySelector(sel);
 const main = $('#main');
 const tabsEl = $('#tabs');
 
+// iOS Safari, the keyboard and the jumping room: when the keyboard opens,
+// Safari scrolls the whole page to bring the focused field into view, so
+// the chat header and the messages slide off the top and the composer ends
+// up floating mid-screen with a big empty gap above it. The page itself
+// never scrolls any more (see index.html: html/body overflow hidden), and
+// the app is sized to exactly the part of the screen the keyboard leaves
+// visible — visualViewport reports that height live, so we size from it
+// on every change. When the height shrinks (keyboard opening) the newest
+// messages are kept in sight; when it grows back (keyboard closing) the
+// message list is left exactly where it was.
+function scrollChatToBottom() {
+  const box = document.getElementById('chat-messages');
+  if (box) box.scrollTop = box.scrollHeight;
+}
+let lastAppH = 0;
+function fitApp() {
+  const h = window.visualViewport ? Math.round(window.visualViewport.height) : window.innerHeight;
+  const app = document.getElementById('app');
+  if (app) app.style.height = h + 'px';
+  if (h < lastAppH) scrollChatToBottom();
+  lastAppH = h;
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', fitApp);
+  window.visualViewport.addEventListener('scroll', fitApp);
+}
+window.addEventListener('resize', fitApp);
+window.addEventListener('orientationchange', fitApp);
+fitApp();
+
 // Never inject server or user text as HTML — always escape it first.
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
@@ -977,6 +1007,14 @@ async function openChat(id) {
   api('/conversations/' + id + '/read', { method: 'POST' }).then(refreshBadges).catch(() => {});
   const input = $('#msg-input');
   let typingSent = false, typingTimer = null, sending = false;
+  // Tapping the box to type: re-fit as the keyboard slides in (its
+  // animation takes a moment) and keep the newest messages in sight.
+  input.addEventListener('focus', () => {
+    fitApp();
+    setTimeout(scrollChatToBottom, 150);
+    setTimeout(() => { fitApp(); scrollChatToBottom(); }, 450);
+  });
+  input.addEventListener('blur', () => { setTimeout(fitApp, 150); });
   input.addEventListener('input', () => {
     if (!typingSent) { sendTyping(id, true); typingSent = true; }
     clearTimeout(typingTimer);
