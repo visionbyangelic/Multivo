@@ -125,10 +125,10 @@ const THEMES = {
 };
 function currentTheme() {
   const saved = localStorage.getItem('mv_theme');
-  return THEMES[saved] ? saved : 'apeach';
+  return THEMES[saved] ? saved : 'plum';
 }
 function applyTheme(name) {
-  const t = THEMES[name] || THEMES.apeach;
+  const t = THEMES[name] || THEMES.plum;
   const r = document.documentElement.style;
   r.setProperty('--accent', t.accent);
   r.setProperty('--plum-950', t.bg);
