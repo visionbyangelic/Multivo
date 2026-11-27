@@ -14,6 +14,7 @@
  *   GET /conversations/{id}/messages?limit=100,
  *   POST /conversations/{id}/messages, POST /conversations/{id}/read
  *   GET /notifications, POST /notifications/read-all
+ *   GET /stories/feed, POST /stories, DELETE /stories/{id}
  *   WS  /ws?token=JWT
  */
 'use strict';
@@ -76,6 +77,112 @@ async function ensurePic(user) {
     return true;
   } catch (e) { /* picture stays initials */ }
   return false;
+}
+
+// ---------- hear it, stickers, media ----------
+// Hear it: the phone reads a message aloud in the language it was written
+// in — the point of a language app is hearing how it sounds, not just
+// reading it. The phone's own voices do the talking (speechSynthesis),
+// so nothing new is needed on the server. Tap again to stop.
+const SPEECH_LANG = {
+  en: 'en-US', fr: 'fr-FR', es: 'es-ES', pt: 'pt-PT', de: 'de-DE', it: 'it-IT',
+  nl: 'nl-NL', ru: 'ru-RU', ar: 'ar-SA', tr: 'tr-TR', hi: 'hi-IN', zh: 'zh-CN',
+  ja: 'ja-JP', ko: 'ko-KR', sw: 'sw-KE', yo: 'yo-NG', ig: 'ig-NG', ha: 'ha-NG',
+};
+let speakingId = null;
+function speak(text, lang, id) {
+  if (!('speechSynthesis' in window)) { alert('This phone cannot read messages aloud.'); return; }
+  if (speakingId === id) { speechSynthesis.cancel(); speakingId = null; renderMessages(); return; }
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  const tag = SPEECH_LANG[lang] || lang || 'en-US';
+  u.lang = tag;
+  const voice = speechSynthesis.getVoices()
+    .find((v) => v.lang && v.lang.toLowerCase().startsWith(tag.slice(0, 2).toLowerCase()));
+  if (voice) u.voice = voice;
+  u.onend = u.onerror = () => { if (speakingId === id) { speakingId = null; renderMessages(); } };
+  speakingId = id;
+  speechSynthesis.speak(u);
+  renderMessages();
+}
+
+// The seven animal stickers — the same pictures as the partners' avatars,
+// drawn big in the chat. stickerId is the bot key, so a sticker from
+// Kim Tae is the bunny and one from Sarima is the lion cub.
+const STICKERS = [
+  { id: 'chinese', label: 'Mr Chu', src: 'avatars/chinese.svg' },
+  { id: 'french', label: 'Monsieur Laurent', src: 'avatars/french.svg' },
+  { id: 'korean', label: 'Kim Tae', src: 'avatars/korean.svg' },
+  { id: 'english', label: 'Sarima', src: 'avatars/english.svg' },
+  { id: 'spanish', label: 'Lucía', src: 'avatars/spanish.svg' },
+  { id: 'japanese', label: 'Yuki', src: 'avatars/japanese.svg' },
+  { id: 'german', label: 'Lukas', src: 'avatars/german.svg' },
+];
+function stickerSrc(id) {
+  const s = STICKERS.find((x) => x.id === id);
+  return s ? s.src : null;
+}
+
+// What the chat list shows for the last message — a voice note, a photo
+// and a sticker are not text, so they get a label instead of a blank line.
+function previewText(m) {
+  if (!m) return 'No messages yet';
+  if (m.stickerId) return 'Sticker';
+  if (m.audioData) return '🎙️ Voice message';
+  if (m.imageData) return '📷 Photo';
+  return m.translatedText || freeTranslations[m.id] || m.originalText;
+}
+
+// Read receipts: my message is read when every other person in the chat
+// has opened it since it was sent. The server works this out from each
+// person's last_read_at and sends it as readBy on every message.
+function isReadByAllOthers(m, conv) {
+  if (!m || !conv || !m.readBy) return false;
+  const others = (conv.participants || []).filter((p) => p.userId !== (state.me && state.me.id));
+  return others.length > 0 && others.every((p) => m.readBy.includes(p.userId));
+}
+
+// A photo from the camera roll can be several MB — shrink it in the
+// browser first (longest side 1200px, JPEG) so the upload stays small and
+// the server's base64 column never has to hold a huge picture.
+function fileToJpeg(file, maxSide) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const url = canvas.toDataURL('image/jpeg', 0.8);
+      URL.revokeObjectURL(img.src);
+      resolve(url.split(',')[1]); // raw base64, no data: prefix — the server stores it bare
+    };
+    img.onerror = () => reject(new Error('Could not read that photo.'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1]);
+    r.onerror = () => reject(new Error('Could not read the recording.'));
+    r.readAsDataURL(blob);
+  });
+}
+
+// Translate any short text in the browser (same free MyMemory service the
+// chat uses) — story captions are translated this way too, so they do not
+// need the server's translator.
+async function translateText(text, from, to) {
+  if (!text || !from || !to || from === to) return null;
+  try {
+    const res = await fetch('https://api.mymemory.translated.net/get?q=' +
+      encodeURIComponent(text) + '&langpair=' + encodeURIComponent(from + '|' + to));
+    const data = await res.json();
+    if (data.responseStatus !== 200) return null;
+    return data.responseData && data.responseData.translatedText;
+  } catch (e) { return null; }
 }
 
 // ---------- themes ----------
@@ -311,6 +418,22 @@ const DEMO = {
     { id: 'n2', title: 'Contact request', body: 'Kemi Adeyemi wants to connect with you', type: 'contact_request', referenceId: 'r1', isRead: false, createdAt: minutesAgo(30) },
     { id: 'n3', title: 'Group message', body: 'Yuki Tanaka messaged Weekend trip', type: 'new_message', referenceId: 'c3', isRead: true, createdAt: minutesAgo(1500) },
   ],
+  // Moments in demo mode: a picture and a caption in each person's own
+  // language, translated underneath for you. Gone after 24 hours, like live.
+  stories: [
+    { id: 's1', userId: 'u1', fullName: 'Amélie Laurent', profilePicture: null,
+      caption: 'Le marché ce matin — les fleurs sont magnifiques !', imageData: 'avatars/french.svg',
+      captionLanguage: 'fr', createdAt: minutesAgo(50), expiresAt: new Date(Date.now() + 23 * 3600 * 1000).toISOString() },
+    { id: 's2', userId: 'u3', fullName: 'Yuki Tanaka', profilePicture: null,
+      caption: '桜がきれいです！', imageData: 'avatars/japanese.svg',
+      captionLanguage: 'ja', createdAt: minutesAgo(180), expiresAt: new Date(Date.now() + 21 * 3600 * 1000).toISOString() },
+    { id: 's3', userId: 'u6', fullName: 'Kemi Adeyemi', profilePicture: null,
+      caption: 'Lagos sunsets never miss.', imageData: null,
+      captionLanguage: 'en', createdAt: minutesAgo(300), expiresAt: new Date(Date.now() + 19 * 3600 * 1000).toISOString() },
+    { id: 's4', userId: 'u2', fullName: 'Diego Ramírez', profilePicture: null,
+      caption: 'Hoy cocino paella para todos.', imageData: null,
+      captionLanguage: 'es', createdAt: minutesAgo(700), expiresAt: new Date(Date.now() + 12 * 3600 * 1000).toISOString() },
+  ],
 };
 
 // ---------- API layer ----------
@@ -433,11 +556,27 @@ function demoHandle(path, opts) {
     const conv = DEMO.conversations.find((c) => c.id === msgMatch[1]);
     if (!conv) fail('Conversation not found.');
     const m = { id: 'm-demo-' + Date.now(), conversationId: conv.id, senderId: 'me', senderName: DEMO.me.fullName,
-      originalText: opts.body.text, originalLanguage: opts.body.originalLanguage || DEMO.me.preferredLanguage,
-      translatedText: null, targetLanguage: null, createdAt: new Date().toISOString() };
+      originalText: opts.body.text || '', originalLanguage: opts.body.originalLanguage || DEMO.me.preferredLanguage,
+      translatedText: null, targetLanguage: null, createdAt: new Date().toISOString(),
+      audioData: opts.body.audioData || null, imageData: opts.body.imageData || null,
+      stickerId: opts.body.stickerId || null, readBy: [] };
     (DEMO.messages[conv.id] = DEMO.messages[conv.id] || []).push(m);
     conv.lastMessage = m; conv.updatedAt = m.createdAt;
     return m;
+  }
+  if (path === '/stories/feed' && method === 'GET') return DEMO.stories.slice();
+  if (path === '/stories' && method === 'POST') {
+    const s = { id: 's-demo-' + Date.now(), userId: 'me', fullName: DEMO.me.fullName,
+      profilePicture: DEMO.me.profilePicture || null, caption: opts.body.caption || null,
+      imageData: opts.body.imageData || null, captionLanguage: opts.body.captionLanguage || DEMO.me.preferredLanguage,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString() };
+    DEMO.stories.unshift(s);
+    return s;
+  }
+  if (path.startsWith('/stories/') && method === 'DELETE') {
+    DEMO.stories = DEMO.stories.filter((s) => s.id !== path.split('/')[2]);
+    return { message: 'Story deleted.' };
   }
   if (/^\/conversations\/[^/]+\/read$/.test(path) && method === 'POST') {
     const conv = DEMO.conversations.find((c) => c.id === path.split('/')[2]);
@@ -514,10 +653,21 @@ function scheduleDemoReply(conversationId) {
     delete demoReplyPending[conversationId];
     delete state.typingUsers[conversationId];
     if (state.currentChat === conversationId) renderTyping();
+    // The other person read what I sent — that is what turns my single
+    // tick into two. Live, the server works this out; in demo, say so here.
+    (DEMO.messages[conversationId] || []).forEach((x) => {
+      if (x.senderId === 'me') x.readBy = [other.userId];
+    });
+    if (state.currentChat === conversationId) renderMessages();
+    // Sometimes the answer is a sticker, not words — the animal that
+    // matches the person answering.
+    const stickerFor = { u1: 'french', u2: 'spanish', u3: 'japanese', u4: 'english', u5: 'german', u6: 'english' };
+    const useSticker = Math.random() < 0.25 && stickerFor[other.userId];
     const m = { id: 'm-demo-' + Date.now(), conversationId, senderId: other.userId, senderName: other.fullName,
-      originalText: reply.originalText, originalLanguage: reply.originalLanguage,
-      translatedText: reply.translatedText, targetLanguage: reply.targetLanguage,
-      createdAt: new Date().toISOString() };
+      originalText: useSticker ? '' : reply.originalText, originalLanguage: reply.originalLanguage,
+      translatedText: useSticker ? null : reply.translatedText, targetLanguage: reply.targetLanguage,
+      createdAt: new Date().toISOString(), audioData: null, imageData: null,
+      stickerId: useSticker ? stickerFor[other.userId] : null, readBy: [] };
     (DEMO.messages[conversationId] = DEMO.messages[conversationId] || []).push(m);
     handleSocketEvent({ type: 'new_message', message: m });
   }, 2800);
@@ -777,8 +927,8 @@ function renderChats() {
   }
   list.innerHTML = state.conversations.map((c) => {
     const last = c.lastMessage;
-    const text = last ? (last.translatedText || freeTranslations[last.id] || last.originalText) : 'No messages yet';
-    if (last && !last.translatedText) translateFree(last);
+    const text = last ? previewText(last) : 'No messages yet';
+    if (last && !last.translatedText && !last.stickerId && !last.audioData && !last.imageData) translateFree(last);
     const other = c.isGroup ? null : c.participants.find((p) => p.userId !== (state.me && state.me.id));
     if (other) ensurePic(other); // fetch their picture if the server did not send one
     const online = c.isGroup ? c.participants.some((p) => p.isOnline && p.userId !== (state.me && state.me.id)) : (other && other.isOnline);
@@ -806,8 +956,19 @@ async function openChat(id) {
     demoBanner() +
     '<div id="chat-messages"></div>' +
     '<div class="typing" id="typing"></div>' +
-    '<div class="composer"><input id="msg-input" placeholder="Message…" autocomplete="off">' +
-    '<button class="btn" id="btn-send">Send</button></div>';
+    '<div class="attach-sheet" id="attach-sheet" hidden>' +
+      '<button class="attach-opt" id="btn-photo">📷 Photo</button>' +
+      '<button class="attach-opt" id="btn-voice">🎙️ Voice note</button>' +
+      '<button class="attach-opt" id="btn-sticker">😊 Sticker</button></div>' +
+    '<div class="sticker-panel" id="sticker-panel" hidden>' +
+      STICKERS.map((s) => '<button class="sticker-pick" data-sticker="' + s.id + '" title="' + esc(s.label) + '"><img src="' + s.src + '" alt="' + esc(s.label) + '"></button>').join('') + '</div>' +
+    '<div class="rec-bar" id="rec-bar" hidden><span class="rec-dot"></span><span id="rec-time">0:00</span>' +
+      '<button class="btn small secondary" id="btn-rec-cancel">Cancel</button>' +
+      '<button class="btn small" id="btn-rec-send">Send</button></div>' +
+    '<div class="composer"><button class="cbtn" id="btn-attach" title="Photo, voice note or sticker">+</button>' +
+    '<input id="msg-input" placeholder="Message…" autocomplete="off">' +
+    '<button class="btn" id="btn-send">Send</button></div>' +
+    '<input type="file" id="photo-input" accept="image/*" hidden>';
   $('#btn-back').onclick = () => { state.currentChat = null; sendTyping(id, false); refreshBadges(); main.classList.remove('chat-view'); showChats(); };
   renderChatHeader();
   try { state.messages = await api('/conversations/' + id + '/messages?limit=100'); }
@@ -843,6 +1004,108 @@ async function openChat(id) {
   const btnSend = $('#btn-send');
   btnSend.onclick = send;
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+
+  // A photo, a voice note or a sticker travels the same road as a text
+  // message — one POST, one bubble — just with media instead of words.
+  const sendMedia = async (body) => {
+    if (sending) return;
+    sending = true; btnSend.disabled = true;
+    try {
+      const m = await api('/conversations/' + id + '/messages', { method: 'POST', body });
+      addMessage(m);
+      renderMessages();
+      const conv2 = state.conversations.find((c) => c.id === id);
+      if (conv2) { conv2.lastMessage = m; conv2.updatedAt = m.createdAt; }
+      if (store.demo) scheduleDemoReply(id); // demo: the other person answers
+    } catch (e) {
+      $('#chat-messages').innerHTML += '<div class="error show">Could not send: ' + esc(e.message) + '</div>';
+    } finally {
+      sending = false; btnSend.disabled = false;
+    }
+  };
+  $('#btn-attach').onclick = () => {
+    $('#sticker-panel').hidden = true;
+    $('#attach-sheet').hidden = !$('#attach-sheet').hidden;
+  };
+  $('#btn-sticker').onclick = () => {
+    $('#attach-sheet').hidden = true;
+    $('#sticker-panel').hidden = !$('#sticker-panel').hidden;
+  };
+  $('#sticker-panel').querySelectorAll('[data-sticker]').forEach((b) => {
+    b.onclick = async () => {
+      $('#sticker-panel').hidden = true;
+      await sendMedia({ text: '', stickerId: b.dataset.sticker, originalLanguage: state.me ? state.me.preferredLanguage : null });
+    };
+  });
+  $('#btn-photo').onclick = () => { $('#attach-sheet').hidden = true; $('#photo-input').click(); };
+  $('#photo-input').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const b64 = await fileToJpeg(file, 1200);
+      const caption = input.value.trim();
+      input.value = '';
+      await sendMedia({ text: caption, imageData: b64, originalLanguage: state.me ? state.me.preferredLanguage : null });
+    } catch (err) { alert(err.message); }
+  });
+  // Voice notes: tap to start, tap Send to send it, Cancel to throw it
+  // away. 60 seconds max; the phone's recorder makes a small webm clip,
+  // which travels as base64 like a photo does.
+  let rec = null, recChunks = [], recStream = null, recTimer = null, recSecs = 0, recSend = false;
+  const recBar = $('#rec-bar'), recTime = $('#rec-time');
+  const fmtSecs = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  const stopRec = () => {
+    clearInterval(recTimer);
+    if (rec && rec.state !== 'inactive') rec.stop();
+    if (recStream) { recStream.getTracks().forEach((t) => t.stop()); recStream = null; }
+    recBar.hidden = true;
+  };
+  $('#btn-voice').onclick = async () => {
+    $('#attach-sheet').hidden = true;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('This phone cannot record voice notes.'); return; }
+    try {
+      recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) { alert('Microphone is off — allow it in the browser settings to send a voice note.'); return; }
+    recChunks = [];
+    rec = new MediaRecorder(recStream);
+    rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) recChunks.push(ev.data); };
+    rec.onstop = async () => {
+      if (recSend) {
+        const blob = new Blob(recChunks, { type: rec.mimeType || 'audio/webm' });
+        try {
+          const b64 = await blobToBase64(blob);
+          await sendMedia({ text: '', audioData: b64, originalLanguage: state.me ? state.me.preferredLanguage : null });
+        } catch (err) { alert(err.message); }
+      }
+      rec = null; recChunks = [];
+    };
+    rec.start();
+    recSecs = 0; recTime.textContent = '0:00';
+    recBar.hidden = false;
+    recTimer = setInterval(() => {
+      recSecs += 1; recTime.textContent = fmtSecs(recSecs);
+      if (recSecs >= 60) { recSend = true; stopRec(); } // 60 seconds is enough for a voice note
+    }, 1000);
+  };
+  $('#btn-rec-cancel').onclick = () => { recSend = false; stopRec(); };
+  $('#btn-rec-send').onclick = () => { recSend = true; stopRec(); };
+
+  // One listener for the whole message list: the speaker button, a tap on
+  // a photo, and the voice-note play button. renderMessages rebuilds the
+  // list on every update, so per-bubble handlers would not survive it.
+  $('#chat-messages').addEventListener('click', (e) => {
+    const spk = e.target.closest('[data-speak]');
+    if (spk) {
+      const m = state.messages.find((x) => x.id === spk.dataset.speak);
+      if (m && m.originalText) speak(m.originalText, m.originalLanguage, m.id);
+      return;
+    }
+    const img = e.target.closest('.msg-img');
+    if (img) { openImageViewer(img.src); return; }
+    const vp = e.target.closest('.voice-play');
+    if (vp) { toggleVoice(vp); return; }
+  });
 }
 function renderChatHeader() {
   const conv = state.conversations.find((c) => c.id === state.currentChat);
@@ -877,6 +1140,55 @@ function renderTyping() {
   const name = state.typingUsers[state.currentChat];
   el.textContent = name ? name + ' is typing…' : '';
 }
+// One audio player for all voice notes — only one plays at a time.
+let voiceAudio = null, voiceBtn = null;
+function fmtClock(s) {
+  if (!isFinite(s) || s == null) return '0:00';
+  return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+}
+function toggleVoice(btn) {
+  const src = btn.dataset.audio;
+  if (!src) return;
+  if (voiceAudio && voiceBtn === btn && !voiceAudio.paused) { voiceAudio.pause(); btn.textContent = '▶'; return; }
+  if (voiceAudio) { voiceAudio.pause(); if (voiceBtn) voiceBtn.textContent = '▶'; }
+  const row = btn.closest('.voice');
+  const fill = row ? row.querySelector('.voice-fill') : null;
+  const timeEl = row ? row.querySelector('.voice-time') : null;
+  voiceAudio = new Audio(src);
+  voiceBtn = btn;
+  btn.textContent = '⏸';
+  voiceAudio.addEventListener('timeupdate', () => {
+    if (fill && voiceAudio.duration) fill.style.width = (voiceAudio.currentTime / voiceAudio.duration * 100) + '%';
+    if (timeEl) timeEl.textContent = fmtClock(voiceAudio.currentTime);
+  });
+  voiceAudio.addEventListener('ended', () => {
+    btn.textContent = '▶';
+    if (fill) fill.style.width = '0%';
+    if (timeEl) timeEl.textContent = '0:00';
+  });
+  voiceAudio.play().catch(() => { btn.textContent = '▶'; });
+}
+// Tap a photo to see it full screen; tap anywhere to close it.
+function openImageViewer(src) {
+  closeImageViewer();
+  const v = document.createElement('div');
+  v.className = 'img-viewer'; v.id = 'img-viewer';
+  v.innerHTML = '<img src="' + esc(src) + '" alt=""><button class="img-viewer-close">✕</button>';
+  v.onclick = () => closeImageViewer();
+  document.body.appendChild(v);
+}
+function closeImageViewer() {
+  const v = document.getElementById('img-viewer');
+  if (v) v.remove();
+}
+// A picture's src: the server stores raw base64, the demo stores a file
+// path for its sample stories — both need to become something an <img>
+// can show.
+function imgSrc(data) {
+  if (!data) return '';
+  if (data.startsWith('data:') || data.startsWith('http') || data.startsWith('/') || data.startsWith('avatars/')) return data;
+  return 'data:image/jpeg;base64,' + data;
+}
 function renderMessages() {
   const box = $('#chat-messages');
   if (!box) return;
@@ -895,16 +1207,41 @@ function renderMessages() {
     const main_text = shown || m.originalText;
     const orig = shown
       ? '<div class="orig">' + (LANG_FLAG[m.originalLanguage] || '') + ' ' + esc(m.originalText) + '</div>' : '';
-    if (!shown) translateFree(m);
+    if (!shown && m.originalText) translateFree(m);
     const sender = !mine && conv ? conv.participants.find((p) => p.userId === m.senderId) : null;
     const av = !mine ? '<span class="msg-avatar">' + avatarHtml(sender || { fullName: m.senderName }, m.senderName) + '</span>' : '';
+    // A sticker is a picture, not a bubble — it floats on its own.
+    if (m.stickerId && stickerSrc(m.stickerId)) {
+      return div + '<div class="msg-row ' + (mine ? 'mine' : 'theirs') + '">' + av +
+        '<img class="sticker-img" src="' + stickerSrc(m.stickerId) + '" alt="sticker">' +
+        '<div class="time">' + esc(msgTime(m.createdAt)) + ticksHtml(m, mine, conv) + '</div></div>';
+    }
+    // Media inside the bubble: a photo on top, a voice note as a player,
+    // then the words (a caption, or the message itself).
+    const img = m.imageData
+      ? '<img class="msg-img" src="' + imgSrc(m.imageData) + '" alt="photo">' : '';
+    const voice = m.audioData
+      ? '<div class="voice"><button class="voice-play" data-audio="data:audio/webm;base64,' + esc(m.audioData) + '">▶</button>' +
+        '<span class="voice-time">0:00</span><div class="voice-bar"><div class="voice-fill"></div></div></div>' : '';
+    const textHtml = (m.originalText || main_text)
+      ? '<div>' + esc(main_text) + '</div>' + orig : '';
+    const speakBtn = m.originalText
+      ? '<button class="speak-btn" data-speak="' + esc(m.id) + '" title="Hear it">' +
+        (speakingId === m.id ? '🔊' : '🔈') + '</button>' : '';
     return div + '<div class="msg-row ' + (mine ? 'mine' : 'theirs') + '">' + av +
       '<div class="msg ' + (mine ? 'mine' : 'theirs') + '">' +
       (mine ? '' : '<div class="who">' + esc(m.senderName) + '</div>') +
-      '<div>' + esc(main_text) + '</div>' + orig +
-      '<div class="time">' + esc(msgTime(m.createdAt)) + '</div></div></div>';
+      img + voice + textHtml +
+      '<div class="time">' + esc(msgTime(m.createdAt)) + ticksHtml(m, mine, conv) + speakBtn + '</div></div></div>';
   }).join('');
   box.scrollTop = box.scrollHeight;
+}
+// Read receipts, two ticks: one tick sent, two ticks when everyone else
+// in the chat has opened it. The server sends readBy on every message.
+function ticksHtml(m, mine, conv) {
+  if (!mine) return '';
+  const read = isReadByAllOthers(m, conv);
+  return ' <span class="ticks' + (read ? ' read' : '') + '">' + (read ? '✓✓' : '✓') + '</span>';
 }
 
 // 5 — Contacts: search, requests, list, new group.
@@ -1064,6 +1401,97 @@ function renderNotifications() {
     : '<div class="empty"><span class="big">🔔</span>Nothing here yet.</div>';
 }
 
+// 6b — Moments: a feed, not WhatsApp circles. A picture and a caption in
+// your own language, translated underneath for everyone else — stories
+// are the translation idea in its purest form. Gone after 24 hours.
+async function showMoments() {
+  showView('moments', true);
+  main.innerHTML =
+    '<div class="topbar"><h2>Moments</h2><button class="icon-btn" id="btn-new-moment">+ New moment</button></div>' +
+    demoBanner() +
+    '<div id="moment-form"></div>' +
+    '<div class="list" id="moment-list"><div class="empty">Loading moments…</div></div>';
+  $('#btn-new-moment').onclick = () => renderMomentForm();
+  try {
+    state.stories = await api('/stories/feed');
+  } catch (e) {
+    $('#moment-list').innerHTML = '<div class="error show">' + esc(e.message) + '</div>';
+    return;
+  }
+  renderMoments();
+}
+function renderMomentForm() {
+  const form = $('#moment-form');
+  if (!form) return;
+  form.innerHTML = '<div class="card"><h2>New moment</h2>' +
+    '<label for="moment-caption">What is happening?</label>' +
+    '<input id="moment-caption" placeholder="A line in your language…" autocomplete="off">' +
+    '<div class="moment-photo-row"><button class="btn secondary" id="btn-moment-photo">📷 Add a photo</button>' +
+    '<span id="moment-photo-name" style="font-size:13px;color:var(--lavender-muted)"></span></div>' +
+    '<input type="file" id="moment-photo-input" accept="image/*" hidden>' +
+    '<div class="error" id="moment-error"></div>' +
+    '<button class="btn" id="btn-post-moment">Post moment</button></div>';
+  let photoB64 = null;
+  $('#btn-moment-photo').onclick = () => $('#moment-photo-input').click();
+  $('#moment-photo-input').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      photoB64 = await fileToJpeg(file, 1200);
+      $('#moment-photo-name').textContent = 'Photo attached ✓';
+    } catch (err) { showError('moment-error', err.message); }
+  });
+  $('#btn-post-moment').onclick = async () => {
+    const caption = $('#moment-caption').value.trim();
+    if (!caption && !photoB64) { showError('moment-error', 'Write a line or add a photo.'); return; }
+    try {
+      await api('/stories', { method: 'POST', body: {
+        caption: caption || null, imageData: photoB64,
+        captionLanguage: state.me ? state.me.preferredLanguage : null } });
+      await showMoments();
+    } catch (e) { showError('moment-error', e.message); }
+  };
+}
+function renderMoments() {
+  const box = $('#moment-list');
+  if (!box) return;
+  const stories = state.stories || [];
+  if (!stories.length) {
+    box.innerHTML = '<div class="empty"><span class="big">✨</span>No moments yet.<br>Post the first one — it disappears in 24 hours.</div>';
+    return;
+  }
+  box.innerHTML = stories.map((s) => {
+    const mine = state.me && s.userId === state.me.id;
+    return '<div class="story-card">' +
+      '<div class="story-head">' + avatarHtml({ fullName: s.fullName, profilePicture: s.profilePicture }, s.fullName) +
+      '<span class="body"><span class="title">' + esc(s.fullName) + '</span>' +
+      '<span class="sub">' + esc(timeAgo(s.createdAt)) + ' · ' + esc(langName(s.captionLanguage)) + '</span></span>' +
+      (mine ? '<button class="icon-btn" data-del-story="' + esc(s.id) + '">Delete</button>' : '') + '</div>' +
+      (s.imageData ? '<img class="story-img" src="' + imgSrc(s.imageData) + '" alt="">' : '') +
+      (s.caption ? '<div class="story-cap">' + esc(s.caption) + '</div>' +
+        '<div class="story-trans" data-story-trans="' + esc(s.id) + '"></div>' : '') +
+      '</div>';
+  }).join('');
+  box.querySelectorAll('[data-del-story]').forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm('Delete this moment?')) return;
+      try { await api('/stories/' + b.dataset.delStory, { method: 'DELETE' }); await showMoments(); }
+      catch (e) { alert(e.message); }
+    };
+  });
+  // The caption is in the poster's language; the translation underneath
+  // is for me, fetched in the browser like the chat's free translation.
+  const mine = state.me ? state.me.preferredLanguage : 'en';
+  stories.forEach(async (s) => {
+    if (!s.caption || !s.captionLanguage || s.captionLanguage === mine) return;
+    const el = box.querySelector('[data-story-trans="' + s.id + '"]');
+    if (!el) return;
+    const t = await translateText(s.caption, s.captionLanguage, mine);
+    if (t && el.isConnected) el.textContent = t;
+  });
+}
+
 // 7 — Profile: view and edit, language picker, sign out.
 async function showProfile() {
   showView('profile', true);
@@ -1091,7 +1519,7 @@ async function showProfile() {
     '<div class="card"><h2>Theme</h2>' +
     '<label for="p-theme">App theme</label><select id="p-theme">' +
     Object.keys(THEMES).map((k) => '<option value="' + k + '"' + (k === currentTheme() ? ' selected' : '') + '>' + esc(THEMES[k].label) + '</option>').join('') +
-    '</select><small>KakaoTalk is the default. Your choice is saved on this phone.</small></div>' +
+    '</select><small>Plum dark is the default. Your choice is saved on this phone.</small></div>' +
     '<div class="card"><h2>Server</h2>' +
     '<p style="color:var(--lavender-muted);font-size:14px;margin:6px 0">' + (store.demo ? 'Demo mode — no server.' : 'Connected to<br><code>' + esc(store.serverUrl) + '</code>') + '</p>' +
     '<button class="btn secondary" id="btn-change-server">Change server</button>' +
@@ -1122,6 +1550,7 @@ document.querySelectorAll('.tab').forEach((tab) => {
     const name = tab.dataset.tab;
     if (name === 'chats') { await refreshBadges(); showChats(); }
     if (name === 'contacts') showContacts();
+    if (name === 'moments') showMoments();
     if (name === 'notifications') { await refreshBadges(); showNotifications(); }
     if (name === 'profile') showProfile();
   });
