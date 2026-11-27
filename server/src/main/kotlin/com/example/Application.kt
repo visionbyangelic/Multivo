@@ -23,6 +23,8 @@ import com.example.utils.ConflictException
 import com.example.utils.ForbiddenException
 import com.example.utils.NotFoundException
 import com.example.utils.UnauthorizedException
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -37,6 +39,7 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.path
 import io.ktor.server.response.respond
@@ -85,6 +88,27 @@ fun Application.module(
     }
 
     install(ContentNegotiation) { json(AppJson) }
+
+    // The iPhone web app lives on another host (Vercel, and GitHub Pages),
+    // so browsers refuse its calls to this server unless the server names
+    // those origins here. Without this, the app's "Save & check server"
+    // fails in the browser with a plain "Load failed" even though the
+    // server itself is up — the browser blocks the request before it
+    // ever reaches us. Installed early so preflight (OPTIONS) requests
+    // are answered before auth or routing can reject them.
+    install(CORS) {
+        allowHost("multivo-web.vercel.app", schemes = listOf("https"))
+        allowHost("visionbyangelic.github.io", schemes = listOf("https"))
+        allowMethod(HttpMethod.Options)
+        allowMethod(HttpMethod.Get)
+        allowMethod(HttpMethod.Post)
+        allowMethod(HttpMethod.Put)
+        allowMethod(HttpMethod.Delete)
+        allowHeader(HttpHeaders.Authorization)
+        allowHeader(HttpHeaders.ContentType)
+        allowCredentials = false
+        maxAgeInSeconds = 3600
+    }
 
     install(WebSockets) {
         pingPeriod = 15.seconds
