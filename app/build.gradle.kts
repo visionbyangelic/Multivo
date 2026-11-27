@@ -23,7 +23,7 @@ android {
         // Emulator -> your computer: http://10.0.2.2:8080
         // Real phone on the same Wi-Fi: http://YOUR-COMPUTER-IP:8080
         // Online server: https://your-domain.com
-        buildConfigField("String", "DEFAULT_SERVER_URL", "\"http://10.0.2.2:8080\"")
+        buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://multivo.onrender.com\"")
     }
 
     buildTypes {
