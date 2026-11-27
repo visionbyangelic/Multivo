@@ -293,6 +293,77 @@ function demoHandle(path, opts) {
   fail('Demo does not cover this yet: ' + path);
 }
 
+// ---------- demo replies ----------
+// In demo mode there is no server and nobody on the other end — so when
+// you send a message, the other person answers anyway, in their own
+// language with the English translation underneath. That is the whole
+// point of Multivo, and a preview that only shows old messages cannot
+// demonstrate it. Replies cycle, one per conversation at a time.
+const DEMO_REPLIES = {
+  u1: [ // Amélie Laurent, French
+    { originalText: 'Oui, avec plaisir !', originalLanguage: 'fr', translatedText: 'Yes, with pleasure!', targetLanguage: 'en' },
+    { originalText: 'Parfait, on fait comme ça.', originalLanguage: 'fr', translatedText: "Perfect, let's do it that way.", targetLanguage: 'en' },
+    { originalText: 'Tu es libre demain ?', originalLanguage: 'fr', translatedText: 'Are you free tomorrow?', targetLanguage: 'en' },
+  ],
+  u2: [ // Diego Ramírez, Spanish
+    { originalText: '¡Claro que sí!', originalLanguage: 'es', translatedText: 'Of course!', targetLanguage: 'en' },
+    { originalText: 'Me parece perfecto.', originalLanguage: 'es', translatedText: 'That sounds perfect to me.', targetLanguage: 'en' },
+    { originalText: '¿Nos vemos mañana?', originalLanguage: 'es', translatedText: 'Shall we meet tomorrow?', targetLanguage: 'en' },
+  ],
+  u3: [ // Yuki Tanaka, Japanese
+    { originalText: 'いいですね！', originalLanguage: 'ja', translatedText: 'Sounds good!', targetLanguage: 'en' },
+    { originalText: '明日は大丈夫です。', originalLanguage: 'ja', translatedText: 'Tomorrow works for me.', targetLanguage: 'en' },
+    { originalText: '楽しみにしています！', originalLanguage: 'ja', translatedText: "I'm looking forward to it!", targetLanguage: 'en' },
+  ],
+  u4: [ // Tunde Bakare, Yoruba
+    { originalText: 'Ó dára!', originalLanguage: 'yo', translatedText: "That's good!", targetLanguage: 'en' },
+    { originalText: 'Ẹ ṣeun!', originalLanguage: 'yo', translatedText: 'Thank you!', targetLanguage: 'en' },
+  ],
+  u5: [ // Lena Fischer, German
+    { originalText: 'Klingt gut!', originalLanguage: 'de', translatedText: 'Sounds good!', targetLanguage: 'en' },
+    { originalText: 'Bis morgen!', originalLanguage: 'de', translatedText: 'See you tomorrow!', targetLanguage: 'en' },
+  ],
+  u6: [ // Kemi Adeyemi, English — same language, so no translation
+    { originalText: 'Sounds good to me!', originalLanguage: 'en', translatedText: null, targetLanguage: null },
+    { originalText: "Let's do it!", originalLanguage: 'en', translatedText: null, targetLanguage: null },
+  ],
+};
+const demoReplyIndex = {};   // conversationId -> next reply to use
+const demoReplyPending = {}; // conversationId -> a reply is already on its way
+function scheduleDemoReply(conversationId) {
+  if (demoReplyPending[conversationId]) return;
+  const conv = state.conversations.find((c) => c.id === conversationId);
+  if (!conv) return;
+  // Prefer someone online; a group answers through its first online member.
+  const other = conv.participants.find((p) => p.userId !== (state.me && state.me.id) && p.isOnline)
+    || conv.participants.find((p) => p.userId !== (state.me && state.me.id));
+  if (!other) return;
+  const replies = DEMO_REPLIES[other.userId] || DEMO_REPLIES.u6;
+  const idx = demoReplyIndex[conversationId] || 0;
+  const reply = replies[idx % replies.length];
+  demoReplyIndex[conversationId] = idx + 1;
+  demoReplyPending[conversationId] = true;
+  // Typing… then the reply, delivered through the same path a live
+  // message takes, so badges, previews and the chat view all update.
+  setTimeout(() => {
+    if (state.currentChat === conversationId) {
+      state.typingUsers[conversationId] = other.fullName;
+      renderTyping();
+    }
+  }, 1200);
+  setTimeout(() => {
+    delete demoReplyPending[conversationId];
+    delete state.typingUsers[conversationId];
+    if (state.currentChat === conversationId) renderTyping();
+    const m = { id: 'm-demo-' + Date.now(), conversationId, senderId: other.userId, senderName: other.fullName,
+      originalText: reply.originalText, originalLanguage: reply.originalLanguage,
+      translatedText: reply.translatedText, targetLanguage: reply.targetLanguage,
+      createdAt: new Date().toISOString() };
+    (DEMO.messages[conversationId] = DEMO.messages[conversationId] || []).push(m);
+    handleSocketEvent({ type: 'new_message', message: m });
+  }, 2800);
+}
+
 // ---------- live data + WebSocket ----------
 async function loadLanguages() {
   try { state.languages = await api('/languages'); }
@@ -588,6 +659,7 @@ async function openChat(id) {
       renderMessages();
       const conv2 = state.conversations.find((c) => c.id === id);
       if (conv2) { conv2.lastMessage = m; conv2.updatedAt = m.createdAt; }
+      if (store.demo) scheduleDemoReply(id); // demo: the other person answers
     } catch (e) {
       $('#chat-messages').innerHTML += '<div class="error show">Could not send: ' + esc(e.message) + '</div>';
     }

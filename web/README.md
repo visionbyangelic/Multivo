@@ -21,6 +21,9 @@ same PostgreSQL database (`multivo`) as the Android app.
   chats (Ada, Amélie, Diego, Yuki and the Weekend trip group) so you can
   see what your friend built and tap through every screen immediately.
   It says "Demo" at the top of every screen, and nothing is sent anywhere.
+  Sending a message in demo gets an answer: the other person replies in
+  their own language, with the English translation shown first — that is
+  the feature the preview is for.
 - To use it for real, switch to a live server from Profile → Change
   server, type your server address, then **Save & check server**.
   Use your laptop's IP on the same Wi-Fi, for example
