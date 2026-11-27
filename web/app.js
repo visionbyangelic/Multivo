@@ -1423,10 +1423,12 @@ function closeImageViewer() {
 }
 // A picture's src: the server stores raw base64, the demo stores a file
 // path for its sample stories — both need to become something an <img>
-// can show.
+// can show. NOTE: a JPEG's base64 starts with "/9j/" — that leading slash
+// is part of the picture, not a file path, so never treat a leading "/"
+// as a path here or every phone photo breaks.
 function imgSrc(data) {
   if (!data) return '';
-  if (data.startsWith('data:') || data.startsWith('http') || data.startsWith('/') || data.startsWith('avatars/')) return data;
+  if (data.startsWith('data:') || data.startsWith('http') || data.startsWith('avatars/')) return data;
   return 'data:image/jpeg;base64,' + data;
 }
 function renderMessages() {
