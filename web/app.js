@@ -27,19 +27,22 @@ const tabsEl = $('#tabs');
 // iOS Safari, the keyboard and the jumping room: when the keyboard opens,
 // Safari scrolls the whole page to bring the focused field into view, so
 // the chat header and the messages slide off the top and the composer ends
-// up floating mid-screen with a big empty gap above it. The page itself
-// never scrolls any more (see index.html: html/body overflow hidden), and
-// the app is sized to exactly the part of the screen the keyboard leaves
-// visible — visualViewport reports that height live, so we size from it
-// on every change. When the height shrinks (keyboard opening) the newest
-// messages are kept in sight; when it grows back (keyboard closing) the
-// message list is left exactly where it was.
+// up floating mid-screen with a big empty gap above it. Sizing the app to
+// the visible area was not enough — Safari still moved the page underneath
+// it — so the page is now pinned in place (see index.html: the body itself
+// is fixed and cannot scroll), the app shell is fixed to the viewport, and
+// every re-fit also drags the page back to the top in case Safari moved it
+// anyway. The message list is the only thing that moves: when the height
+// shrinks (keyboard opening) the newest messages are kept in sight; when
+// it grows back (keyboard closing) the list is left exactly where it was.
 function scrollChatToBottom() {
   const box = document.getElementById('chat-messages');
   if (box) box.scrollTop = box.scrollHeight;
 }
 let lastAppH = 0;
 function fitApp() {
+  // The page must never scroll — if Safari moved it, put it back.
+  if (window.scrollY !== 0) window.scrollTo(0, 0);
   const h = window.visualViewport ? Math.round(window.visualViewport.height) : window.innerHeight;
   const app = document.getElementById('app');
   if (app) app.style.height = h + 'px';
@@ -52,7 +55,24 @@ if (window.visualViewport) {
 }
 window.addEventListener('resize', fitApp);
 window.addEventListener('orientationchange', fitApp);
+// Belt and braces: the page has no business scrolling at all, so if
+// anything ever moves it (the keyboard is the usual suspect), undo it.
+window.addEventListener('scroll', () => { if (window.scrollY !== 0) window.scrollTo(0, 0); }, { passive: true });
 fitApp();
+
+// A photo that fails to load shows a plain note instead of the browser's
+// broken-image icon. Error events do not bubble, so this listens in the
+// capture phase on the whole app.
+document.getElementById('app').addEventListener('error', (e) => {
+  const img = e.target && e.target.tagName === 'IMG' ? e.target : null;
+  if (!img || (!img.classList.contains('msg-img') && !img.classList.contains('story-img'))) return;
+  if (img.dataset.broken) return;
+  img.dataset.broken = '1';
+  const note = document.createElement('div');
+  note.className = 'img-failed';
+  note.textContent = 'This photo did not load — check your connection and reopen this screen.';
+  img.replaceWith(note);
+}, true);
 
 // Never inject server or user text as HTML — always escape it first.
 function esc(s) {
@@ -173,20 +193,30 @@ function isReadByAllOthers(m, conv) {
 }
 
 // A photo from the camera roll can be several MB — shrink it in the
-// browser first (longest side 1200px, JPEG) so the upload stays small and
-// the server's base64 column never has to hold a huge picture.
+// browser first (longest side 1024px, JPEG) so the upload stays small and
+// the server's base64 column never has to hold a huge picture. The result
+// is checked before it is used: a real JPEG always starts with the same
+// bytes, so if the conversion produced anything else the photo is
+// rejected here with a plain error instead of travelling to the server
+// and showing up as a broken image.
 function fileToJpeg(file, maxSide) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-      const url = canvas.toDataURL('image/jpeg', 0.8);
+      try {
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const url = canvas.toDataURL('image/jpeg', 0.8);
+        const b64 = url.split(',')[1] || '';
+        if (b64.indexOf('/9j/') !== 0) throw new Error('bad jpeg');
+        resolve(b64); // raw base64, no data: prefix — the server stores it bare
+      } catch (e) {
+        reject(new Error('Could not read that photo — try another one.'));
+      }
       URL.revokeObjectURL(img.src);
-      resolve(url.split(',')[1]); // raw base64, no data: prefix — the server stores it bare
     };
     img.onerror = () => reject(new Error('Could not read that photo.'));
     img.src = URL.createObjectURL(file);
@@ -293,6 +323,40 @@ function applyTheme(name) {
   r.setProperty('--divider-text', t.dividerText);
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', t.headBg);
+}
+
+// ---------- chat wallpaper ----------
+// A wallpaper is per chat, not per theme: one room can be blush pink
+// while the rest of the app stays plum dark. The choice is saved on this
+// phone (localStorage, one key per conversation) and only changes the
+// message list's background — bubbles, header and tabs keep the theme.
+// 'theme' means no override: the room follows the app theme.
+const WALLPAPERS = [
+  { id: 'theme', label: 'Theme', bg: null, pattern: null },
+  { id: 'blush', label: 'Blush', bg: '#FFE3EC', pattern: 'flowers' },
+  { id: 'mint', label: 'Mint', bg: '#DFF5E3', pattern: 'leaves' },
+  { id: 'sky', label: 'Sky', bg: '#DCEEFF', pattern: null },
+  { id: 'lavender', label: 'Lavender', bg: '#E9E4FF', pattern: null },
+  { id: 'midnight', label: 'Midnight', bg: '#1B1035', pattern: 'paws' },
+];
+function wallpaperKey(id) { return 'multivo.wallpaper.' + id; }
+function getWallpaper(id) {
+  const saved = localStorage.getItem(wallpaperKey(id));
+  return WALLPAPERS.some((w) => w.id === saved) ? saved : 'theme';
+}
+function applyChatWallpaper(id) {
+  const box = document.getElementById('chat-messages');
+  if (!box) return;
+  const w = WALLPAPERS.find((x) => x.id === getWallpaper(id)) || WALLPAPERS[0];
+  const typing = document.getElementById('typing');
+  if (!w.bg) {
+    box.style.backgroundColor = ''; box.style.backgroundImage = '';
+    if (typing) typing.style.background = '';
+    return;
+  }
+  box.style.backgroundColor = w.bg;
+  box.style.backgroundImage = w.pattern ? PATTERNS[w.pattern] : 'none';
+  if (typing) typing.style.background = w.bg;
 }
 function timeAgo(iso) {
   if (!iso) return '';
@@ -643,6 +707,13 @@ function demoHandle(path, opts) {
     const conv = DEMO.conversations.find((c) => c.id === path.split('/')[2]);
     if (conv) conv.unreadCount = 0;
     return { message: 'Marked as read.' };
+  }
+  if (/^\/conversations\/[^/]+\/clear$/.test(path) && method === 'POST') {
+    const cid = path.split('/')[2];
+    DEMO.messages[cid] = [];
+    const conv = DEMO.conversations.find((c) => c.id === cid);
+    if (conv) { conv.lastMessage = null; conv.unreadCount = 0; }
+    return { message: 'Chat cleared.' };
   }
   if (path === '/notifications' && method === 'GET') return DEMO.notifications;
   if (path === '/notifications/read-all' && method === 'POST') {
@@ -1026,7 +1097,13 @@ async function openChat(id) {
   main.innerHTML =
     '<div class="chat-head"><button class="back-btn" id="btn-back">←</button>' +
     '<span class="chat-head-avatar" id="chat-avatar"></span>' +
-    '<div class="chat-head-name"><div id="chat-title">' + esc(state.currentChatTitle) + '</div><span id="chat-online"></span></div></div>' +
+    '<div class="chat-head-name"><div id="chat-title">' + esc(state.currentChatTitle) + '</div><span id="chat-online"></span></div>' +
+    '<button class="chat-head-menu" id="btn-chat-menu" title="Chat options">⋯</button></div>' +
+    '<div class="chat-menu" id="chat-menu" hidden>' +
+      '<button class="chat-menu-opt" id="btn-wallpaper">🖼️ Wallpaper</button>' +
+      '<button class="chat-menu-opt danger" id="btn-clear-chat">🧹 Clear chat</button></div>' +
+    '<div class="wallpaper-row" id="wallpaper-row" hidden><span class="lbl">Wallpaper</span>' +
+      WALLPAPERS.map((w) => '<button class="wall-swatch' + (w.id === getWallpaper(id) ? ' active' : '') + '" data-wall="' + w.id + '" style="background:' + (w.bg || 'var(--chat-bg)') + '" title="' + esc(w.label) + '">' + (w.id === 'theme' ? 'Aa' : '') + '</button>').join('') + '</div>' +
     demoBanner() +
     '<div id="chat-messages"></div>' +
     '<div class="typing" id="typing"></div>' +
@@ -1045,6 +1122,34 @@ async function openChat(id) {
     '<input type="file" id="photo-input" accept="image/*" hidden>';
   $('#btn-back').onclick = () => { state.currentChat = null; sendTyping(id, false); refreshBadges(); main.classList.remove('chat-view'); showChats(); };
   renderChatHeader();
+  applyChatWallpaper(id);
+  // Chat options: wallpaper for this room, and clear chat — with a
+  // confirm first, because it hides every message from my view (the
+  // other person keeps theirs).
+  $('#btn-chat-menu').onclick = () => {
+    const menu = $('#chat-menu');
+    menu.hidden = !menu.hidden;
+    if (menu.hidden) $('#wallpaper-row').hidden = true;
+  };
+  $('#btn-wallpaper').onclick = () => { $('#wallpaper-row').hidden = !$('#wallpaper-row').hidden; };
+  document.querySelectorAll('#wallpaper-row [data-wall]').forEach((b) => {
+    b.onclick = () => {
+      localStorage.setItem(wallpaperKey(id), b.dataset.wall);
+      document.querySelectorAll('#wallpaper-row [data-wall]').forEach((x) => x.classList.toggle('active', x === b));
+      applyChatWallpaper(id);
+    };
+  });
+  $('#btn-clear-chat').onclick = async () => {
+    if (!confirm('Clear this chat? Every message disappears from your view. The other person keeps their copy.')) return;
+    try {
+      await api('/conversations/' + id + '/clear', { method: 'POST' });
+      state.messages = [];
+      renderMessages();
+      const conv2 = state.conversations.find((c) => c.id === id);
+      if (conv2) conv2.lastMessage = null;
+      $('#chat-menu').hidden = true;
+    } catch (e) { alert(e.message); }
+  };
   try { state.messages = await api('/conversations/' + id + '/messages?limit=100'); }
   catch (e) { state.messages = []; $('#chat-messages').innerHTML = '<div class="empty">Could not load messages: ' + esc(e.message) + '</div>'; }
   renderMessages();
@@ -1053,7 +1158,10 @@ async function openChat(id) {
   let typingSent = false, typingTimer = null, sending = false;
   // Tapping the box to type: re-fit as the keyboard slides in (its
   // animation takes a moment) and keep the newest messages in sight.
+  // The page itself is pinned (see fitApp), but the focus is also told
+  // to leave the page exactly where it is.
   input.addEventListener('focus', () => {
+    window.scrollTo(0, 0);
     fitApp();
     setTimeout(scrollChatToBottom, 150);
     setTimeout(() => { fitApp(); scrollChatToBottom(); }, 450);
@@ -1125,44 +1233,70 @@ async function openChat(id) {
     e.target.value = '';
     if (!file) return;
     try {
-      const b64 = await fileToJpeg(file, 1200);
+      const b64 = await fileToJpeg(file, 1024);
       const caption = input.value.trim();
       input.value = '';
       await sendMedia({ text: caption, imageData: b64, originalLanguage: caption ? detectLanguage(caption) : (state.me ? state.me.preferredLanguage : null) });
     } catch (err) { alert(err.message); }
   });
   // Voice notes: tap to start, tap Send to send it, Cancel to throw it
-  // away. 60 seconds max; the phone's recorder makes a small webm clip,
-  // which travels as base64 like a photo does.
-  let rec = null, recChunks = [], recStream = null, recTimer = null, recSecs = 0, recSend = false;
+  // away. 60 seconds max. The phone's recorder makes the clip, which
+  // travels as base64 like a photo does. Two things an iPhone needs that
+  // the first version did not do: the recorder has to be asked for a
+  // format the phone actually supports (an iPhone records MP4, not the
+  // WebM other phones use — asking for WebM made the recorder fail
+  // silently), and every step has to report its own failure instead of
+  // dying quietly and leaving the button looking dead.
+  let rec = null, recChunks = [], recStream = null, recTimer = null, recSecs = 0, recSend = false, recMime = '';
   const recBar = $('#rec-bar'), recTime = $('#rec-time');
   const fmtSecs = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   const stopRec = () => {
     clearInterval(recTimer);
-    if (rec && rec.state !== 'inactive') rec.stop();
+    if (rec && rec.state !== 'inactive') { try { rec.stop(); } catch (e) { /* already stopped */ } }
     if (recStream) { recStream.getTracks().forEach((t) => t.stop()); recStream = null; }
     recBar.hidden = true;
   };
   $('#btn-voice').onclick = async () => {
     $('#attach-sheet').hidden = true;
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('This phone cannot record voice notes.'); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('This phone cannot record voice notes in this browser.'); return; }
+    if (typeof MediaRecorder === 'undefined') { alert('This phone cannot record voice notes in this browser.'); return; }
     try {
       recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (err) { alert('Microphone is off — allow it in the browser settings to send a voice note.'); return; }
+    } catch (err) {
+      const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+      alert(denied
+        ? 'Microphone is blocked for this site. In Safari, tap the AA button in the address bar, then Website Settings, set Microphone to Allow, and try again.'
+        : 'Microphone is off — allow it in the browser settings to send a voice note.');
+      return;
+    }
     recChunks = [];
-    rec = new MediaRecorder(recStream);
+    recMime = pickAudioMime();
+    try {
+      rec = recMime ? new MediaRecorder(recStream, { mimeType: recMime }) : new MediaRecorder(recStream);
+    } catch (err) {
+      recStream.getTracks().forEach((t) => t.stop()); recStream = null;
+      alert('This phone cannot record voice notes in this browser.');
+      return;
+    }
     rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) recChunks.push(ev.data); };
     rec.onstop = async () => {
       if (recSend) {
-        const blob = new Blob(recChunks, { type: rec.mimeType || 'audio/webm' });
-        try {
-          const b64 = await blobToBase64(blob);
-          await sendMedia({ text: '', audioData: b64, originalLanguage: state.me ? state.me.preferredLanguage : null });
-        } catch (err) { alert(err.message); }
+        if (!recChunks.length) { alert('Nothing was recorded — try again, and keep talking until you tap Send.'); }
+        else {
+          const blob = new Blob(recChunks, { type: (rec && rec.mimeType) || recMime || 'audio/webm' });
+          try {
+            const b64 = await blobToBase64(blob);
+            await sendMedia({ text: '', audioData: b64, originalLanguage: state.me ? state.me.preferredLanguage : null });
+          } catch (err) { alert(err.message); }
+        }
       }
       rec = null; recChunks = [];
     };
-    rec.start();
+    try { rec.start(250); } catch (err) {
+      recStream.getTracks().forEach((t) => t.stop()); recStream = null;
+      alert('Could not start recording — try again.');
+      return;
+    }
     recSecs = 0; recTime.textContent = '0:00';
     recBar.hidden = false;
     recTimer = setInterval(() => {
@@ -1221,6 +1355,30 @@ function renderTyping() {
   if (!el) return;
   const name = state.typingUsers[state.currentChat];
   el.textContent = name ? name + ' is typing…' : '';
+}
+// Which recording format to ask for: an iPhone records MP4, most other
+// phones record WebM — asking for the wrong one makes the recorder fail.
+// Returns '' when nothing can be asked (the plain constructor then picks).
+function pickAudioMime() {
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
+  const candidates = ['audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm'];
+  for (const t of candidates) {
+    try { if (MediaRecorder.isTypeSupported(t)) return t; } catch (e) { /* try the next one */ }
+  }
+  return '';
+}
+// What a voice note's bytes actually are: an iPhone's clip starts with an
+// MP4 box (ftyp), a WebM clip starts with its own magic bytes. The player
+// has to be told the right kind — the first version always said WebM, so
+// an iPhone's MP4 note recorded fine and then refused to play at all.
+function audioMime(b64) {
+  if (!b64) return 'audio/webm';
+  if (b64.indexOf('GkXf') === 0) return 'audio/webm';
+  try {
+    const head = atob(b64.slice(0, 24));
+    if (head.slice(4, 8) === 'ftyp') return 'audio/mp4';
+  } catch (e) { /* not decodable here — fall through to WebM */ }
+  return 'audio/webm';
 }
 // One audio player for all voice notes — only one plays at a time.
 let voiceAudio = null, voiceBtn = null;
@@ -1303,7 +1461,7 @@ function renderMessages() {
     const img = m.imageData
       ? '<img class="msg-img" src="' + imgSrc(m.imageData) + '" alt="photo">' : '';
     const voice = m.audioData
-      ? '<div class="voice"><button class="voice-play" data-audio="data:audio/webm;base64,' + esc(m.audioData) + '">▶</button>' +
+      ? '<div class="voice"><button class="voice-play" data-audio="data:' + audioMime(m.audioData) + ';base64,' + esc(m.audioData) + '">▶</button>' +
         '<span class="voice-time">0:00</span><div class="voice-bar"><div class="voice-fill"></div></div></div>' : '';
     const textHtml = (m.originalText || main_text)
       ? '<div>' + esc(main_text) + '</div>' + orig : '';
@@ -1337,7 +1495,8 @@ async function showContacts() {
     '<input id="search" type="search" placeholder="Type at least 2 characters…" autocomplete="off">' +
     '<div class="list" id="search-results"></div>' +
     '<h3 style="margin-top:20px">Requests</h3><div class="list" id="req-list"></div>' +
-    '<h3 style="margin-top:20px">My contacts</h3><div class="list" id="contact-list"></div>';
+    '<h3 style="margin-top:20px">My contacts</h3><div class="list" id="contact-list"></div>' +
+    '<h3 style="margin-top:20px">People you chat with</h3><div class="list" id="chat-people-list"></div>';
   $('#btn-new-group').onclick = () => renderGroupForm();
   let searchTimer = null;
   $('#search').addEventListener('input', (e) => {
@@ -1434,6 +1593,38 @@ async function reloadContacts() {
       catch (e) { alert(e.message); }
     };
   });
+  // People you chat with: everyone in your conversations, whether or not
+  // you accepted their request — the chats are the contact list too.
+  // Without this the page looks empty until requests are accepted.
+  if (!state.conversations || !state.conversations.length) {
+    try { state.conversations = await api('/conversations'); } catch (e) { state.conversations = []; }
+  }
+  const meId = state.me ? state.me.id : null;
+  const seenPeople = {};
+  const chatPeople = [];
+  (state.conversations || []).forEach((c) => {
+    (c.participants || []).forEach((p) => {
+      if (p.userId === meId || seenPeople[p.userId]) return;
+      seenPeople[p.userId] = true; chatPeople.push(p);
+    });
+  });
+  const peopleBox = $('#chat-people-list');
+  if (peopleBox) {
+    peopleBox.innerHTML = chatPeople.length ? chatPeople.map((p) =>
+      '<div class="row">' + avatarHtml(p, p.fullName, p.isOnline) +
+      '<span class="body"><span class="title">' + esc(p.fullName) + '</span>' +
+      '<span class="sub">@' + esc(p.username) + ' · ' + esc(langName(p.preferredLanguage)) + '</span></span>' +
+      '<button class="btn small" data-msg="' + esc(p.userId) + '">Message</button></div>').join('')
+      : '<div class="empty">No chats yet — start one from Chats.</div>';
+    peopleBox.querySelectorAll('[data-msg]').forEach((btn) => {
+      btn.onclick = async () => {
+        try {
+          const conv = await api('/conversations/private', { method: 'POST', body: { userId: btn.dataset.msg } });
+          await refreshBadges(); openChat(conv.id);
+        } catch (e) { alert(e.message); }
+      };
+    });
+  }
 }
 function renderGroupForm() {
   const form = $('#group-form');
@@ -1520,19 +1711,25 @@ function renderMomentForm() {
     e.target.value = '';
     if (!file) return;
     try {
-      photoB64 = await fileToJpeg(file, 1200);
+      photoB64 = await fileToJpeg(file, 1024);
       $('#moment-photo-name').textContent = 'Photo attached ✓';
     } catch (err) { showError('moment-error', err.message); }
   });
   $('#btn-post-moment').onclick = async () => {
     const caption = $('#moment-caption').value.trim();
     if (!caption && !photoB64) { showError('moment-error', 'Write a line or add a photo.'); return; }
+    const btn = $('#btn-post-moment');
+    btn.disabled = true; btn.textContent = 'Posting…';
     try {
       await api('/stories', { method: 'POST', body: {
         caption: caption || null, imageData: photoB64,
         captionLanguage: state.me ? state.me.preferredLanguage : null } });
       await showMoments();
-    } catch (e) { showError('moment-error', e.message); }
+    } catch (e) {
+      // The photo stays attached, so one more tap retries the same post.
+      showError('moment-error', 'Could not post: ' + e.message + ' Your photo is still attached — tap Post moment again.');
+      btn.disabled = false; btn.textContent = 'Post moment';
+    }
   };
 }
 function renderMoments() {

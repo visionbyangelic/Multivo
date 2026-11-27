@@ -44,11 +44,16 @@ body {
 /* The page itself must never scroll. On iOS, the moment the keyboard
    opens Safari scrolls the whole page to bring the focused field into
    view — the chat header and the messages slide off the top and the
-   composer floats mid-screen with a big empty gap above it. Every screen
-   scrolls inside the app instead (main scrolls, the message list scrolls),
-   and app.js sizes the app to the visible area the keyboard leaves. */
+   composer ends up floating mid-screen with a big empty gap above it.
+   Sizing the app to the visible area was not enough: Safari still
+   moved the page underneath it. So the page is now pinned in place —
+   the body itself is fixed, it cannot scroll at all — and the app
+   shell is fixed to the viewport too. Every screen scrolls inside the
+   app instead (main scrolls, the message list scrolls), and app.js
+   sizes the app to the visible area the keyboard leaves. */
 html { -webkit-text-size-adjust: 100%; }
-html, body { height: 100%; overflow: hidden; }
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { position: fixed; top: 0; left: 0; width: 100%; }
 h1, h2, h3 { margin: 0; }
 a { color: var(--violet-300); }
 button { font: inherit; cursor: pointer; }
@@ -66,9 +71,11 @@ small { color: var(--lavender-muted); font-size: 13px; line-height: 1.5; display
 /* Layout: one phone-width column, safe areas for the notch / home bar.
    The app is exactly one screen tall (app.js sets the exact pixel height
    from the visible area when the keyboard is open); the main screens
-   scroll inside it, they never scroll the page. */
-#app { max-width: 560px; margin: 0 auto; height: 100%; height: 100dvh; display: flex; flex-direction: column; }
-main { flex: 1; min-height: 0; overflow-y: auto; padding: calc(12px + env(safe-area-inset-top)) 16px calc(var(--tab-h) + 24px + env(safe-area-inset-bottom)); }
+   scroll inside it, they never scroll the page. The shell is fixed to
+   the viewport so the keyboard opening cannot push it anywhere. */
+#app { max-width: 560px; margin: 0 auto; height: 100%; height: 100dvh; display: flex; flex-direction: column;
+  position: fixed; top: 0; left: 0; right: 0; }
+main { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: none; padding: calc(12px + env(safe-area-inset-top)) 16px calc(var(--tab-h) + 24px + env(safe-area-inset-bottom)); }
 main.no-tabs { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .view { display: none; }
 .view.active { display: block; animation: fade .3s ease; }
@@ -176,8 +183,28 @@ main.chat-view .chat-head-name #chat-title { font-size: 18px; font-weight: 800; 
 main.chat-view .chat-head-name #chat-online { font-size: 12px; opacity: .85; }
 main.chat-view .demo-banner { flex: none; margin: 8px 12px 0; }
 #chat-messages { display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 8px;
-  flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: none; -webkit-overflow-scrolling: touch;
   background-color: var(--chat-bg); background-image: var(--pattern); background-size: auto; }
+/* Chat options: the ⋯ menu in the header — wallpaper and clear chat. */
+main.chat-view .chat-head-menu { flex: none; background: none; border: none; color: var(--head-text);
+  font-size: 22px; font-weight: 700; padding: 8px 4px; letter-spacing: 1px; }
+.chat-menu { flex: none; display: flex; gap: 8px; padding: 8px 12px;
+  background: var(--plum-800); border-bottom: 1px solid var(--outline); }
+.chat-menu[hidden] { display: none; }
+.chat-menu-opt { flex: 1; background: var(--plum-700); border: 1px solid var(--outline);
+  color: var(--lavender); border-radius: 12px; padding: 10px 6px; font-size: 14px; font-weight: 600; }
+.chat-menu-opt.danger { color: var(--error); }
+.wallpaper-row { flex: none; display: flex; gap: 10px; align-items: center; padding: 10px 12px;
+  background: var(--plum-800); border-bottom: 1px solid var(--outline); overflow-x: auto; }
+.wallpaper-row[hidden] { display: none; }
+.wallpaper-row .lbl { font-size: 13px; color: var(--lavender-muted); flex: none; }
+.wall-swatch { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--outline);
+  padding: 0; font-size: 11px; font-weight: 700; }
+.wall-swatch.active { border-color: var(--violet-400); box-shadow: 0 0 0 2px var(--plum-800), 0 0 0 4px var(--violet-400); }
+/* A photo that fails to load shows a plain note, never the browser's
+   broken-image icon. */
+.img-failed { display: block; padding: 18px 14px; border-radius: 12px; margin-bottom: 6px;
+  background: var(--plum-700); color: var(--lavender-muted); font-size: 13px; text-align: center; }
 .msg-row { display: flex; gap: 8px; align-items: flex-end; }
 .msg-row.mine { justify-content: flex-end; }
 .msg-row .msg { max-width: 76%; }
