@@ -29,6 +29,12 @@ function esc(s) {
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[c]));
 }
+// Contact requests show a person's name, not their country —
+// a request from "Kim Tae" reads right, a flag there is clutter.
+function stripFlags(name) {
+  return String(name == null ? '' : name)
+    .replace(/[\u{1F1E6}-\u{1F1FF}]{2}/gu, '').replace(/\s{2,}/g, ' ').trim();
+}
 function initials(name) {
   return (name || '?').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 }
@@ -971,7 +977,7 @@ async function reloadContacts() {
   const reqBox = $('#req-list');
   reqBox.innerHTML = state.requests.length ? state.requests.map((r) =>
     '<div class="row">' + avatarHtml(r.sender, r.sender.fullName, false) +
-    '<span class="body"><span class="title">' + esc(r.sender.fullName) + '</span>' +
+    '<span class="body"><span class="title">' + esc(stripFlags(r.sender.fullName)) + '</span>' +
     '<span class="sub">wants to connect · ' + esc(timeAgo(r.createdAt)) + '</span></span>' +
     '<button class="btn small" data-accept="' + esc(r.id) + '">Accept</button> ' +
     '<button class="btn small secondary" data-reject="' + esc(r.id) + '">Reject</button></div>').join('')
