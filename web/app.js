@@ -32,6 +32,23 @@ function esc(s) {
 function initials(name) {
   return (name || '?').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 }
+// A flag next to a language, for the small "original" line under a
+// translated message.
+const LANG_FLAG = {
+  en: '🇬🇧', fr: '🇫🇷', es: '🇪🇸', pt: '🇵🇹', de: '🇩🇪', it: '🇮🇹', nl: '🇳🇱',
+  ru: '🇷🇺', ar: '🇸🇦', tr: '🇹🇷', hi: '🇮🇳', zh: '🇨🇳', ja: '🇯🇵', ko: '🇰🇷',
+  sw: '🇰🇪', yo: '🇳🇬', ig: '🇳🇬', ha: '🇳🇬',
+};
+// A person's picture when they set one, initials in a yellow circle when
+// they did not. `user` is a PublicUser, Participant or UserProfile.
+function avatarHtml(user, title, online) {
+  const pic = user && user.profilePicture;
+  const inner = pic
+    ? '<img src="' + esc(pic) + '" alt="">'
+    : esc(initials(title || (user && user.fullName) || '?'));
+  return '<span class="avatar">' + inner +
+    (online ? '<span class="dot on"></span>' : '') + '</span>';
+}
 function timeAgo(iso) {
   if (!iso) return '';
   const d = new Date(iso), now = Date.now(), diff = now - d.getTime();
@@ -85,6 +102,39 @@ const FALLBACK_LANGUAGES = [
 function langName(code) {
   const hit = (state.languages || FALLBACK_LANGUAGES).find((l) => l.code === code);
   return hit ? hit.name : (code || '').toUpperCase();
+}
+
+// ---------- free translation (live mode, no Google key) ----------
+// The server only translates when GOOGLE_TRANSLATE_API_KEY is set, and
+// there is no key on the live server — so a live message in Chinese would
+// otherwise reach the reader untranslated. Until that key exists, the app
+// translates in the browser with MyMemory's free service (no sign-up,
+// short chat messages only). A message the server already translated is
+// never re-translated, and a failed lookup just shows the original.
+const freeTranslations = {}; // message id -> translated text
+async function translateFree(msg) {
+  if (!msg || msg.translatedText || !msg.originalLanguage) return;
+  const mine = state.me && state.me.preferredLanguage;
+  if (!mine || msg.originalLanguage === mine) return;
+  if (freeTranslations[msg.id] !== undefined) return; // done or in flight
+  freeTranslations[msg.id] = ''; // mark in flight so we do not fetch twice
+  try {
+    const url = 'https://api.mymemory.translated.net/get?q=' +
+      encodeURIComponent(msg.originalText) + '&langpair=' +
+      encodeURIComponent(msg.originalLanguage + '|' + mine);
+    const res = await fetch(url);
+    const data = await res.json();
+    // Only a real 200 answer counts: on a quota error MyMemory still
+    // returns text, but it is a "you used all free translations" warning,
+    // not a translation — never show that as the message.
+    if (data.responseStatus !== 200) { delete freeTranslations[msg.id]; return; }
+    const text = data && data.responseData && data.responseData.translatedText;
+    if (text && text !== msg.originalText) {
+      freeTranslations[msg.id] = text;
+      if (state.currentChat === msg.conversationId) renderMessages();
+      else if (state.conversations) renderChats();
+    } else { delete freeTranslations[msg.id]; }
+  } catch (e) { delete freeTranslations[msg.id]; }
 }
 
 // ---------- demo data ----------
@@ -608,11 +658,12 @@ function renderChats() {
   }
   list.innerHTML = state.conversations.map((c) => {
     const last = c.lastMessage;
-    const text = last ? (last.translatedText || last.originalText) : 'No messages yet';
+    const text = last ? (last.translatedText || freeTranslations[last.id] || last.originalText) : 'No messages yet';
+    if (last && !last.translatedText) translateFree(last);
     const other = c.isGroup ? null : c.participants.find((p) => p.userId !== (state.me && state.me.id));
     const online = c.isGroup ? c.participants.some((p) => p.isOnline && p.userId !== (state.me && state.me.id)) : (other && other.isOnline);
     return '<button class="row" data-id="' + esc(c.id) + '">' +
-      '<span class="avatar">' + esc(initials(c.title)) + (online ? '<span class="dot on"></span>' : '') + '</span>' +
+      avatarHtml(other, c.title, online) +
       '<span class="body"><span class="title">' + esc(c.title) + (c.isGroup ? '<span class="pill">Group</span>' : '') + '</span>' +
       '<span class="sub">' + esc(text) + '</span></span>' +
       '<span class="meta">' + esc(timeAgo(last ? last.createdAt : c.updatedAt)) +
@@ -687,11 +738,13 @@ function renderMessages() {
   renderTyping();
   box.innerHTML = state.messages.map((m) => {
     const mine = state.me && m.senderId === state.me.id;
-    // Show the translation (what I read) first, original underneath — the
-    // whole point of Multivo.
-    const main_text = m.translatedText || m.originalText;
-    const orig = m.translatedText
-      ? '<div class="orig">Original (' + esc(langName(m.originalLanguage)) + '): ' + esc(m.originalText) + '</div>' : '';
+    // What I read is the message itself; the original is one small grey
+    // line underneath it — a chat message first, a translation second.
+    const shown = m.translatedText || freeTranslations[m.id] || '';
+    const main_text = shown || m.originalText;
+    const orig = shown
+      ? '<div class="orig">' + (LANG_FLAG[m.originalLanguage] || '') + ' ' + esc(m.originalText) + '</div>' : '';
+    if (!shown) translateFree(m);
     return '<div class="msg ' + (mine ? 'mine' : 'theirs') + '">' +
       (mine ? '' : '<div class="who">' + esc(m.senderName) + '</div>') +
       '<div>' + esc(main_text) + '</div>' + orig +
@@ -739,8 +792,7 @@ function searchRow(u) {
     : u.relationship === 'request_sent'
       ? '<span class="badge grey">Request sent</span>'
       : '<button class="btn small" data-act="add" data-id="' + esc(u.id) + '">Add</button>';
-  return '<div class="row"><span class="avatar">' + esc(initials(u.fullName)) +
-    (u.isOnline ? '<span class="dot on"></span>' : '') + '</span>' +
+  return '<div class="row">' + avatarHtml(u, u.fullName, u.isOnline) +
     '<span class="body"><span class="title">' + esc(u.fullName) + '</span>' +
     '<span class="sub">@' + esc(u.username) + ' · ' + esc(langName(u.preferredLanguage)) + '</span></span>' + action + '</div>';
 }
@@ -771,7 +823,7 @@ async function reloadContacts() {
   }
   const reqBox = $('#req-list');
   reqBox.innerHTML = state.requests.length ? state.requests.map((r) =>
-    '<div class="row"><span class="avatar">' + esc(initials(r.sender.fullName)) + '</span>' +
+    '<div class="row">' + avatarHtml(r.sender, r.sender.fullName, false) +
     '<span class="body"><span class="title">' + esc(r.sender.fullName) + '</span>' +
     '<span class="sub">wants to connect · ' + esc(timeAgo(r.createdAt)) + '</span></span>' +
     '<button class="btn small" data-accept="' + esc(r.id) + '">Accept</button> ' +
@@ -789,8 +841,7 @@ async function reloadContacts() {
   });
   const box = $('#contact-list');
   box.innerHTML = state.contacts.length ? state.contacts.map((u) =>
-    '<div class="row"><span class="avatar">' + esc(initials(u.fullName)) +
-    (u.isOnline ? '<span class="dot on"></span>' : '') + '</span>' +
+    '<div class="row">' + avatarHtml(u, u.fullName, u.isOnline) +
     '<span class="body"><span class="title">' + esc(u.fullName) + '</span>' +
     '<span class="sub">@' + esc(u.username) + ' · ' + esc(langName(u.preferredLanguage)) + '</span></span>' +
     '<button class="btn small" data-msg="' + esc(u.id) + '">Message</button> ' +
@@ -868,8 +919,10 @@ async function showProfile() {
   const me = state.me;
   main.innerHTML =
     '<div class="topbar"><h2>Profile</h2></div>' + demoBanner() +
-    '<div class="card" style="text-align:center"><div class="avatar" style="width:84px;height:84px;font-size:32px;margin:0 auto">' +
-    esc(initials(me.fullName)) + '</div>' +
+    '<div class="card" style="text-align:center">' +
+    (me.profilePicture
+      ? '<img src="' + esc(me.profilePicture) + '" alt="" style="width:84px;height:84px;border-radius:50%;object-fit:cover;margin:0 auto;display:block">'
+      : '<div class="avatar" style="width:84px;height:84px;font-size:32px;margin:0 auto">' + esc(initials(me.fullName)) + '</div>') +
     '<h2 style="margin-top:10px">' + esc(me.fullName) + '</h2>' +
     '<p style="color:var(--lavender-muted);margin:4px 0">@' + esc(me.username) + ' · ' + esc(me.email) + '<br>' +
     (me.isOnline ? '● Online' : '○ Offline') + ' · reads ' + esc(langName(me.preferredLanguage)) + '</p></div>' +
