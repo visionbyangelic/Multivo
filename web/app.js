@@ -452,12 +452,7 @@ function showServer() {
   };
   const cont = $('#btn-continue');
   if (cont) cont.onclick = async () => { await enterApp(); };
-  $('#btn-demo').onclick = async () => {
-    store.demo = true; store.token = 'demo-token';
-    state.me = DEMO.me; state.languages = FALLBACK_LANGUAGES;
-    state.conversations = DEMO.conversations; state.notifications = DEMO.notifications;
-    showChats();
-  };
+  $('#btn-demo').onclick = async () => { enterDemo(); };
 }
 
 // 2 — Auth: sign in, or create an account.
@@ -846,15 +841,21 @@ document.querySelectorAll('.tab').forEach((tab) => {
   });
 });
 
-// First screen is always the server screen (unless a demo session is saved,
-// in which case we go straight back into the demo).
+// Demo mode: open the app itself, with your friend's sample chats,
+// so the first thing anyone sees is the app, not a setup screen.
+// The server screen is still reachable from Profile → Change server.
+function enterDemo() {
+  store.demo = true; store.token = 'demo-token';
+  state.me = DEMO.me; state.languages = FALLBACK_LANGUAGES;
+  state.conversations = DEMO.conversations; state.notifications = DEMO.notifications;
+  showChats();
+}
+
+// First screen: the app itself. A saved live session resumes into the
+// real server; a saved demo resumes into the demo; everyone else opens
+// straight into the demo chats — no server setup screen first.
 (async function init() {
-  if (store.demo) {
-    state.me = DEMO.me; state.languages = FALLBACK_LANGUAGES;
-    state.conversations = DEMO.conversations; state.notifications = DEMO.notifications;
-    showChats();
-    return;
-  }
-  await loadLanguages(); // best effort; auth screen falls back to the built-in list
-  showServer();
+  if (store.demo) { enterDemo(); return; }
+  if (store.serverUrl && store.token) { await enterApp(); return; }
+  enterDemo();
 })();
