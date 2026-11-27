@@ -6,7 +6,9 @@ import com.example.models.Participant
 import com.example.models.SocketEvent
 import com.example.repositories.ConversationRepository
 import com.example.repositories.NotificationRepository
+import com.example.repositories.Recipient
 import com.example.repositories.TranslationRepository
+import com.example.repositories.UserRepository
 import com.example.utils.ForbiddenException
 import com.example.utils.NotFoundException
 import com.example.utils.normalizeLanguage
@@ -21,7 +23,8 @@ class ChatService(
     private val translator: TranslationProvider,
     private val conversations: ConversationRepository = ConversationRepository(),
     private val translations: TranslationRepository = TranslationRepository(),
-    private val notifications: NotificationRepository = NotificationRepository()
+    private val notifications: NotificationRepository = NotificationRepository(),
+    private val users: UserRepository = UserRepository()
 ) {
     private val log = LoggerFactory.getLogger(ChatService::class.java)
 
@@ -107,7 +110,15 @@ class ChatService(
         val recipients = io { conversations.recipients(conversationId, senderId) }
 
         if (translator.isEnabled && body.isNotEmpty()) {
-            translateForRecipients(messageId, body, sourceLanguage, recipients)
+            // One translation for me too, so my own bubble can show how
+            // my message reads in my language. Without it I only ever
+            // see what I typed, and the "see how it translates" half of
+            // the app never happens for the sender.
+            val myLanguage = io { users.findById(senderId)?.preferredLanguage }?.let(::normalizeLanguage)
+            val translateTargets = if (myLanguage != null) {
+                recipients + Recipient(senderId, myLanguage)
+            } else recipients
+            translateForRecipients(messageId, body, sourceLanguage, translateTargets)
         }
 
         // Each person receives the message with their own translation.

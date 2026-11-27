@@ -382,6 +382,37 @@ async function translateFree(msg) {
   } catch (e) { delete freeTranslations[msg.id]; }
 }
 
+// The language a message is written in is the language of the words,
+// not the language on the sender's profile. The app used to tag every
+// message with my own preferred language, so a Chinese message from me
+// arrived tagged "en" — the server saw source and target as the same
+// language, stored no translation at all, and the other side only ever
+// "understood" it because the test partner's brain translated it on the
+// fly. Tagging by script catches the languages that do not use the
+// Latin alphabet; Latin text keeps my profile language, which is the
+// best guess the phone can make on its own.
+function detectLanguage(text) {
+  const mine = (state.me && state.me.preferredLanguage) || 'en';
+  if (!text) return mine;
+  const counts = { ko: 0, ja: 0, zh: 0, ru: 0, ar: 0, hi: 0 };
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp >= 0xAC00 && cp <= 0xD7A3) counts.ko++; // Hangul
+    else if ((cp >= 0x3040 && cp <= 0x309F) || (cp >= 0x30A0 && cp <= 0x30FF)) counts.ja++; // hiragana, katakana
+    else if (cp >= 0x4E00 && cp <= 0x9FFF) counts.zh++; // Han ideographs
+    else if (cp >= 0x0400 && cp <= 0x04FF) counts.ru++; // Cyrillic
+    else if (cp >= 0x0600 && cp <= 0x06FF) counts.ar++; // Arabic
+    else if (cp >= 0x0900 && cp <= 0x097F) counts.hi++; // Devanagari
+  }
+  // Most letters wins; on a tie the earlier script in this list wins,
+  // so kana beats kanji and Japanese wins over Chinese for mixed text.
+  let best = null, bestN = 0;
+  for (const lang of ['ko', 'ja', 'zh', 'ru', 'ar', 'hi']) {
+    if (counts[lang] > bestN) { best = lang; bestN = counts[lang]; }
+  }
+  return best || mine;
+}
+
 // ---------- demo data ----------
 // Copied from the Android preview data (ui/preview/SampleData.kt) so the
 // demo feels like the real app. Times are relative to "now" when loaded.
@@ -777,6 +808,19 @@ function handleSocketEvent(ev) {
     const conv = state.conversations.find((c) => c.id === m.conversationId);
     if (conv) { conv.lastMessage = m; conv.updatedAt = m.createdAt; if (m.senderId !== state.me.id && state.currentChat !== m.conversationId) conv.unreadCount = (conv.unreadCount || 0) + 1; }
     if (state.currentChat === m.conversationId) {
+      // They have just sent a message, so they have read everything
+      // before it: sending updates their read time past all my earlier
+      // messages. Flip my ticks to double now, not on the next refresh —
+      // the server already records the read, my copy of my own message
+      // is just never refreshed when their reply arrives.
+      if (m.senderId !== state.me.id) {
+        state.messages.forEach((x) => {
+          if (x.senderId === state.me.id) {
+            x.readBy = x.readBy || [];
+            if (!x.readBy.includes(m.senderId)) x.readBy.push(m.senderId);
+          }
+        });
+      }
       addMessage(m);
       renderMessages();
       api('/conversations/' + m.conversationId + '/read', { method: 'POST' }).catch(() => {});
@@ -1027,7 +1071,7 @@ async function openChat(id) {
     input.value = ''; sendTyping(id, false); typingSent = false;
     try {
       const m = await api('/conversations/' + id + '/messages', {
-        method: 'POST', body: { text, originalLanguage: state.me ? state.me.preferredLanguage : null } });
+        method: 'POST', body: { text, originalLanguage: detectLanguage(text) } });
       addMessage(m);
       renderMessages();
       const conv2 = state.conversations.find((c) => c.id === id);
@@ -1084,7 +1128,7 @@ async function openChat(id) {
       const b64 = await fileToJpeg(file, 1200);
       const caption = input.value.trim();
       input.value = '';
-      await sendMedia({ text: caption, imageData: b64, originalLanguage: state.me ? state.me.preferredLanguage : null });
+      await sendMedia({ text: caption, imageData: b64, originalLanguage: caption ? detectLanguage(caption) : (state.me ? state.me.preferredLanguage : null) });
     } catch (err) { alert(err.message); }
   });
   // Voice notes: tap to start, tap Send to send it, Cancel to throw it
