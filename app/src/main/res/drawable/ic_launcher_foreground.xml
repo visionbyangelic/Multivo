@@ -1,0 +1,9 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Two overlapping speech bubbles -->
+    <path android:fillColor="#F7F4EE"
+        android:pathData="M30,34h34a8,8 0,0 1,8 8v18a8,8 0,0 1,-8 8H44l-10,8v-8h-4a8,8 0,0 1,-8 -8V42a8,8 0,0 1,8 -8z"/>
+    <path android:fillColor="#F2725A"
+        android:pathData="M52,48h26a7,7 0,0 1,7 7v14a7,7 0,0 1,-7 7h-2v7l-9,-7H52a7,7 0,0 1,-7 -7V55a7,7 0,0 1,7 -7z"/>
+</vector>
