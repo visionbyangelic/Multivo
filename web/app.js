@@ -59,38 +59,70 @@ function picFor(user) {
   return (id && picCache[id]) || null;
 }
 async function ensurePic(user) {
-  if (!user || store.demo) return;
+  if (!user || store.demo) return false;
   const id = user.userId || user.id;
-  if (!id || user.profilePicture || picCache[id] !== undefined) return;
+  if (!id || user.profilePicture || picCache[id] !== undefined) return false;
   picCache[id] = '';
   try {
     const pub = await api('/users/' + id);
     picCache[id] = pub.profilePicture || '';
     if (currentView === 'chats') renderChats();
+    return true;
   } catch (e) { /* picture stays initials */ }
+  return false;
 }
 
 // ---------- themes ----------
-// KakaoTalk is the default — that is the look Angelic asked to copy.
-// The choice is saved on this phone (localStorage) so it survives
-// closing and reopening the app, and it is applied on every start.
+// Designed themes, not flat colour swaps — the way the KakaoTalk and LINE
+// themes Angelic sent look: a patterned chat background, a coloured header
+// bar, and coloured bubbles. Each theme owns its room: chatBg is the room
+// background, pattern is a repeating motif drawn over it, headBg/headText
+// colour the header bar, mineBg/mineText colour my bubbles, theirsBg the
+// other person's. The choice is saved on this phone (localStorage) so it
+// survives closing and reopening the app, and it is applied on every start.
+const PATTERNS = {
+  flowers: 'url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27150%27%20height%3D%27150%27%3E%3Cg%20fill%3D%27%23ffffff%27%20fill-opacity%3D%270.55%27%3E%3Ccircle%20cx%3D%2738.0%27%20cy%3D%2731.9%27%20r%3D%275.5%27%2F%3E%3Ccircle%20cx%3D%2745.7%27%20cy%3D%2737.5%27%20r%3D%275.5%27%2F%3E%3Ccircle%20cx%3D%2742.7%27%20cy%3D%2746.5%27%20r%3D%275.5%27%2F%3E%3Ccircle%20cx%3D%2733.3%27%20cy%3D%2746.5%27%20r%3D%275.5%27%2F%3E%3Ccircle%20cx%3D%2730.3%27%20cy%3D%2737.5%27%20r%3D%275.5%27%2F%3E%3Ccircle%20cx%3D%2738%27%20cy%3D%2740%27%20r%3D%274.2%27%20fill%3D%27%23FFD166%27%20fill-opacity%3D%270.55%27%2F%3E%3C%2Fg%3E%3Cg%20fill%3D%27%23ffffff%27%20fill-opacity%3D%270.45%27%3E%3Ccircle%20cx%3D%27112.0%27%20cy%3D%2798.1%27%20r%3D%276.7%27%2F%3E%3Ccircle%20cx%3D%27121.4%27%20cy%3D%27104.9%27%20r%3D%276.7%27%2F%3E%3Ccircle%20cx%3D%27117.8%27%20cy%3D%27116.0%27%20r%3D%276.7%27%2F%3E%3Ccircle%20cx%3D%27106.2%27%20cy%3D%27116.0%27%20r%3D%276.7%27%2F%3E%3Ccircle%20cx%3D%27102.6%27%20cy%3D%27104.9%27%20r%3D%276.7%27%2F%3E%3Ccircle%20cx%3D%27112%27%20cy%3D%27108%27%20r%3D%275.1%27%20fill%3D%27%23FFD166%27%20fill-opacity%3D%270.45%27%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%27120%27%20cy%3D%2722%27%20r%3D%272.5%27%20fill%3D%27%23ffffff%27%20fill-opacity%3D%270.6%27%2F%3E%3Ccircle%20cx%3D%2720%27%20cy%3D%27122%27%20r%3D%272.5%27%20fill%3D%27%23ffffff%27%20fill-opacity%3D%270.6%27%2F%3E%3C%2Fsvg%3E")',
+  paws: 'url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27160%27%20height%3D%27160%27%3E%3Cg%20transform%3D%27translate%2842%2044%29%20rotate%28-18%29%20scale%281%29%27%20fill%3D%27%233A2A33%27%20fill-opacity%3D%270.13%27%3E%3Cellipse%20cx%3D%270%27%20cy%3D%276%27%20rx%3D%2710%27%20ry%3D%277.5%27%2F%3E%3Ccircle%20cx%3D%27-11%27%20cy%3D%27-4%27%20r%3D%273.6%27%2F%3E%3Ccircle%20cx%3D%27-4%27%20cy%3D%27-8%27%20r%3D%273.6%27%2F%3E%3Ccircle%20cx%3D%274%27%20cy%3D%27-8%27%20r%3D%273.6%27%2F%3E%3Ccircle%20cx%3D%2711%27%20cy%3D%27-4%27%20r%3D%273.6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28122%20118%29%20rotate%2822%29%20scale%281.15%29%27%20fill%3D%27%233A2A33%27%20fill-opacity%3D%270.1%27%3E%3Cellipse%20cx%3D%270%27%20cy%3D%276%27%20rx%3D%2710%27%20ry%3D%277.5%27%2F%3E%3Ccircle%20cx%3D%27-11%27%20cy%3D%27-4%27%20r%3D%273.6%27%2F%3E%3Ccircle%20cx%3D%27-4%27%20cy%3D%27-8%27%20r%3D%273.6%27%2F%3E%3Ccircle%20cx%3D%274%27%20cy%3D%27-8%27%20r%3D%273.6%27%2F%3E%3Ccircle%20cx%3D%2711%27%20cy%3D%27-4%27%20r%3D%273.6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28128%2030%29%20rotate%2810%29%20scale%280.7%29%27%20fill%3D%27%233A2A33%27%20fill-opacity%3D%270.1%27%3E%3Cellipse%20cx%3D%270%27%20cy%3D%276%27%20rx%3D%2710%27%20ry%3D%277.5%27%2F%3E%3Ccircle%20cx%3D%27-11%27%20cy%3D%27-4%27%20r%3D%273.6%27%2F%3E%3Ccircle%20cx%3D%27-4%27%20cy%3D%27-8%27%20r%3D%273.6%27%2F%3E%3Ccircle%20cx%3D%274%27%20cy%3D%27-8%27%20r%3D%273.6%27%2F%3E%3Ccircle%20cx%3D%2711%27%20cy%3D%27-4%27%20r%3D%273.6%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2830%20130%29%20rotate%28-25%29%20scale%280.7%29%27%20fill%3D%27%233A2A33%27%20fill-opacity%3D%270.12%27%3E%3Cellipse%20cx%3D%270%27%20cy%3D%276%27%20rx%3D%2710%27%20ry%3D%277.5%27%2F%3E%3Ccircle%20cx%3D%27-11%27%20cy%3D%27-4%27%20r%3D%273.6%27%2F%3E%3Ccircle%20cx%3D%27-4%27%20cy%3D%27-8%27%20r%3D%273.6%27%2F%3E%3Ccircle%20cx%3D%274%27%20cy%3D%27-8%27%20r%3D%273.6%27%2F%3E%3Ccircle%20cx%3D%2711%27%20cy%3D%27-4%27%20r%3D%273.6%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E")',
+  leaves: 'url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27140%27%20height%3D%27140%27%3E%3Cg%20transform%3D%27translate%2836%2038%29%20rotate%28-30%29%20scale%281%29%27%20fill%3D%27%23ffffff%27%20fill-opacity%3D%270.38%27%3E%3Cellipse%20cx%3D%270%27%20cy%3D%270%27%20rx%3D%2714%27%20ry%3D%276%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28104%20102%29%20rotate%2824%29%20scale%281.2%29%27%20fill%3D%27%23ffffff%27%20fill-opacity%3D%270.3%27%3E%3Cellipse%20cx%3D%270%27%20cy%3D%270%27%20rx%3D%2714%27%20ry%3D%276%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%28112%2026%29%20rotate%2855%29%20scale%280.7%29%27%20fill%3D%27%232E7D32%27%20fill-opacity%3D%270.18%27%3E%3Cellipse%20cx%3D%270%27%20cy%3D%270%27%20rx%3D%2714%27%20ry%3D%276%27%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%27translate%2824%20116%29%20rotate%28-50%29%20scale%280.7%29%27%20fill%3D%27%232E7D32%27%20fill-opacity%3D%270.15%27%3E%3Cellipse%20cx%3D%270%27%20cy%3D%270%27%20rx%3D%2714%27%20ry%3D%276%27%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%2770%27%20cy%3D%2770%27%20r%3D%272.5%27%20fill%3D%27%23ffffff%27%20fill-opacity%3D%270.5%27%2F%3E%3C%2Fsvg%3E")',
+};
 const THEMES = {
-  kakao: { label: 'KakaoTalk', accent: '#FEE500', bg: '#FFFFFF', surface: '#FFFFFF',
+  apeach: { label: 'Apeach (Kakao Friends)', accent: '#FF8FAB', bg: '#FFF0F5', surface: '#FFFFFF',
+            soft: '#FFE3EC', ink: '#4A2C3A', muted: '#A67C8C', mineText: '#FFFFFF',
+            theirsBorder: '#F3D3DE', line: '#F3D3DE', tabBg: 'rgba(255,240,245,.97)', demoBg: '#FFE3EC',
+            chatBg: '#FFD9E8', headBg: '#FF8FAB', headText: '#FFFFFF', mineBg: '#FF7AA2',
+            theirsBg: '#FFFFFF', pattern: PATTERNS.flowers, dividerBg: 'rgba(0,0,0,.12)', dividerText: '#FFFFFF' },
+  blackcat: { label: 'Black Cat (Kakao)', accent: '#2E2E2E', bg: '#FFF0F5', surface: '#FFFFFF',
+            soft: '#FFE3EC', ink: '#2E2E2E', muted: '#9A7C88', mineText: '#FFFFFF',
+            theirsBorder: '#EFD3DE', line: '#EFD3DE', tabBg: 'rgba(255,240,245,.97)', demoBg: '#FFE3EC',
+            chatBg: '#FFC9DB', headBg: '#FFC9DB', headText: '#2E2E2E', mineBg: '#2E2E2E',
+            theirsBg: '#FFFFFF', pattern: PATTERNS.paws, dividerBg: 'rgba(0,0,0,.55)', dividerText: '#FFFFFF' },
+  forest: { label: 'Forest Friends (LINE)', accent: '#06C755', bg: '#F4FBF2', surface: '#FFFFFF',
+            soft: '#E3F2DF', ink: '#1F3D1F', muted: '#7A9A7A', mineText: '#1F3D1F',
+            theirsBorder: '#D3E8CF', line: '#D3E8CF', tabBg: 'rgba(244,251,242,.97)', demoBg: '#E3F2DF',
+            chatBg: '#C9E8C0', headBg: '#FFFFFF', headText: '#1F3D1F', mineBg: '#A5D6A7',
+            theirsBg: '#FFFFFF', pattern: PATTERNS.leaves, dividerBg: 'rgba(0,0,0,.12)', dividerText: '#FFFFFF' },
+  kakao: { label: 'KakaoTalk Classic', accent: '#FEE500', bg: '#FFFFFF', surface: '#FFFFFF',
            soft: '#F7F7F7', ink: '#191919', muted: '#8A8A8A', mineText: '#191919',
-           theirsBorder: '#E5E5E5', line: '#E5E5E5', tabBg: 'rgba(255,255,255,.97)', demoBg: '#FFFBE5' },
-  line:  { label: 'LINE', accent: '#06C755', bg: '#FFFFFF', surface: '#FFFFFF',
-           soft: '#F7F7F7', ink: '#191919', muted: '#8A8A8A', mineText: '#FFFFFF',
-           theirsBorder: '#E5E5E5', line: '#E5E5E5', tabBg: 'rgba(255,255,255,.97)', demoBg: '#EAFBF0' },
+           theirsBorder: '#E5E5E5', line: '#E5E5E5', tabBg: 'rgba(255,255,255,.97)', demoBg: '#FFFBE5',
+           chatBg: '#FFFFFF', headBg: '#FEE500', headText: '#191919', mineBg: '#FEE500',
+           theirsBg: '#FFFFFF', pattern: 'none', dividerBg: 'rgba(0,0,0,.12)', dividerText: '#FFFFFF' },
+  line:  { label: 'LINE Classic', accent: '#06C755', bg: '#FFFFFF', surface: '#FFFFFF',
+           soft: '#F7F7F7', ink: '#191919', muted: '#8A8A8A', mineText: '#1F3D1F',
+           theirsBorder: '#D3E8CF', line: '#D3E8CF', tabBg: 'rgba(255,255,255,.97)', demoBg: '#EAFBF0',
+           chatBg: '#A9C6E8', headBg: '#FFFFFF', headText: '#191919', mineBg: '#A5D6A7',
+           theirsBg: '#FFFFFF', pattern: 'none', dividerBg: 'rgba(0,0,0,.12)', dividerText: '#FFFFFF' },
   plum:  { label: 'Plum (dark)', accent: '#8B6CFF', bg: '#150E24', surface: '#241A3D',
            soft: '#1C1430', ink: '#EEE8FF', muted: '#A99DCB', mineText: '#FFFFFF',
-           theirsBorder: '#5E4F86', line: '#5E4F86', tabBg: 'rgba(21,14,36,.97)', demoBg: '#2F234F' },
+           theirsBorder: '#5E4F86', line: '#5E4F86', tabBg: 'rgba(21,14,36,.97)', demoBg: '#2F234F',
+           chatBg: '#150E24', headBg: '#241A3D', headText: '#EEE8FF', mineBg: '#8B6CFF',
+           theirsBg: '#241A3D', pattern: 'none', dividerBg: 'rgba(255,255,255,.15)', dividerText: '#EEE8FF' },
 };
 function currentTheme() {
   const saved = localStorage.getItem('mv_theme');
-  return THEMES[saved] ? saved : 'kakao';
+  return THEMES[saved] ? saved : 'apeach';
 }
 function applyTheme(name) {
-  const t = THEMES[name] || THEMES.kakao;
+  const t = THEMES[name] || THEMES.apeach;
   const r = document.documentElement.style;
   r.setProperty('--accent', t.accent);
   r.setProperty('--plum-950', t.bg);
@@ -108,8 +140,16 @@ function applyTheme(name) {
   r.setProperty('--theirs-border', t.theirsBorder);
   r.setProperty('--tab-bg', t.tabBg);
   r.setProperty('--demo-bg', t.demoBg);
+  r.setProperty('--chat-bg', t.chatBg);
+  r.setProperty('--head-bg', t.headBg);
+  r.setProperty('--head-text', t.headText);
+  r.setProperty('--mine-bg', t.mineBg);
+  r.setProperty('--theirs-bg', t.theirsBg);
+  r.setProperty('--pattern', t.pattern);
+  r.setProperty('--divider-bg', t.dividerBg);
+  r.setProperty('--divider-text', t.dividerText);
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', t.accent);
+  if (meta) meta.setAttribute('content', t.headBg);
 }
 function timeAgo(iso) {
   if (!iso) return '';
@@ -533,6 +573,16 @@ function sendTyping(conversationId, typing) {
   ws.send(JSON.stringify({ type: typing ? 'typing_start' : 'typing_stop', conversationId }));
 }
 
+// One copy of each message, however it arrives. The server sends my own
+// message back over the live connection as well as in the reply to my
+// send — without this check it showed twice until a refresh re-fetched
+// the list from the server.
+function addMessage(m) {
+  if (!m || !m.id) return;
+  if (state.messages.some((x) => x.id === m.id)) return;
+  state.messages.push(m);
+}
+
 // A live event arrives: a message, someone typing, someone coming online.
 function handleSocketEvent(ev) {
   if (!ev || !ev.type) return;
@@ -541,7 +591,7 @@ function handleSocketEvent(ev) {
     const conv = state.conversations.find((c) => c.id === m.conversationId);
     if (conv) { conv.lastMessage = m; conv.updatedAt = m.createdAt; if (m.senderId !== state.me.id && state.currentChat !== m.conversationId) conv.unreadCount = (conv.unreadCount || 0) + 1; }
     if (state.currentChat === m.conversationId) {
-      state.messages.push(m);
+      addMessage(m);
       renderMessages();
       api('/conversations/' + m.conversationId + '/read', { method: 'POST' }).catch(() => {});
     }
@@ -742,22 +792,24 @@ async function openChat(id) {
   const conv = state.conversations.find((c) => c.id === id);
   state.currentChatTitle = conv ? conv.title : 'Chat';
   showView('chat', false);
+  main.classList.add('chat-view');
   main.innerHTML =
-    '<button class="back-btn" id="btn-back">← Chats</button>' +
-    '<div class="topbar"><h2 id="chat-title">' + esc(state.currentChatTitle) + '</h2><span id="chat-online"></span></div>' +
+    '<div class="chat-head"><button class="back-btn" id="btn-back">←</button>' +
+    '<span class="chat-head-avatar" id="chat-avatar"></span>' +
+    '<div class="chat-head-name"><div id="chat-title">' + esc(state.currentChatTitle) + '</div><span id="chat-online"></span></div></div>' +
     demoBanner() +
     '<div id="chat-messages"></div>' +
     '<div class="typing" id="typing"></div>' +
     '<div class="composer"><input id="msg-input" placeholder="Message…" autocomplete="off">' +
     '<button class="btn" id="btn-send">Send</button></div>';
-  $('#btn-back').onclick = () => { state.currentChat = null; sendTyping(id, false); refreshBadges(); showChats(); };
+  $('#btn-back').onclick = () => { state.currentChat = null; sendTyping(id, false); refreshBadges(); main.classList.remove('chat-view'); showChats(); };
   renderChatHeader();
   try { state.messages = await api('/conversations/' + id + '/messages?limit=100'); }
   catch (e) { state.messages = []; $('#chat-messages').innerHTML = '<div class="empty">Could not load messages: ' + esc(e.message) + '</div>'; }
   renderMessages();
   api('/conversations/' + id + '/read', { method: 'POST' }).then(refreshBadges).catch(() => {});
   const input = $('#msg-input');
-  let typingSent = false, typingTimer = null;
+  let typingSent = false, typingTimer = null, sending = false;
   input.addEventListener('input', () => {
     if (!typingSent) { sendTyping(id, true); typingSent = true; }
     clearTimeout(typingTimer);
@@ -765,30 +817,53 @@ async function openChat(id) {
   });
   const send = async () => {
     const text = input.value.trim();
-    if (!text) return;
+    if (!text || sending) return; // one tap, one send — a double tap used to post twice
+    sending = true; btnSend.disabled = true;
     input.value = ''; sendTyping(id, false); typingSent = false;
     try {
       const m = await api('/conversations/' + id + '/messages', {
         method: 'POST', body: { text, originalLanguage: state.me ? state.me.preferredLanguage : null } });
-      state.messages.push(m);
+      addMessage(m);
       renderMessages();
       const conv2 = state.conversations.find((c) => c.id === id);
       if (conv2) { conv2.lastMessage = m; conv2.updatedAt = m.createdAt; }
       if (store.demo) scheduleDemoReply(id); // demo: the other person answers
     } catch (e) {
       $('#chat-messages').innerHTML += '<div class="error show">Could not send: ' + esc(e.message) + '</div>';
+    } finally {
+      sending = false; btnSend.disabled = false;
     }
   };
-  $('#btn-send').onclick = send;
+  const btnSend = $('#btn-send');
+  btnSend.onclick = send;
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
 }
 function renderChatHeader() {
   const conv = state.conversations.find((c) => c.id === state.currentChat);
   const el = $('#chat-online');
   if (!el || !conv) return;
+  const others = conv.participants.filter((p) => p.userId !== (state.me && state.me.id));
+  const other = others[0];
+  const av = $('#chat-avatar');
+  if (av && other) {
+    av.innerHTML = avatarHtml(other, other.fullName);
+    // The server may not have sent this person's picture — fetch their
+    // public profile once and redraw the header only if it lands.
+    ensurePic(other).then((changed) => { if (changed) renderChatHeader(); });
+  }
   const online = conv.participants.some((p) => p.isOnline && p.userId !== (state.me && state.me.id));
   el.innerHTML = '<span class="dot' + (online ? ' on' : '') + '" style="display:inline-block;vertical-align:middle"></span> ' +
-    '<span style="font-size:13px;color:var(--lavender-muted)">' + (online ? 'Online' : 'Offline') + '</span>';
+    (online ? 'Online' : 'Offline');
+}
+function dayLabel(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const sameDay = (a, b) => a.toDateString() === b.toDateString();
+  const today = new Date(), yest = new Date();
+  yest.setDate(today.getDate() - 1);
+  if (sameDay(d, today)) return 'Today';
+  if (sameDay(d, yest)) return 'Yesterday';
+  return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 function renderTyping() {
   const el = $('#typing');
@@ -800,8 +875,14 @@ function renderMessages() {
   const box = $('#chat-messages');
   if (!box) return;
   renderTyping();
+  const conv = state.conversations.find((c) => c.id === state.currentChat);
+  let lastDay = '';
   box.innerHTML = state.messages.map((m) => {
     const mine = state.me && m.senderId === state.me.id;
+    // A date divider when the day changes, the way KakaoTalk shows it.
+    const day = dayLabel(m.createdAt);
+    const div = day && day !== lastDay ? '<div class="date-div">' + esc(day) + '</div>' : '';
+    lastDay = day || lastDay;
     // What I read is the message itself; the original is one small grey
     // line underneath it — a chat message first, a translation second.
     const shown = m.translatedText || freeTranslations[m.id] || '';
@@ -809,13 +890,15 @@ function renderMessages() {
     const orig = shown
       ? '<div class="orig">' + (LANG_FLAG[m.originalLanguage] || '') + ' ' + esc(m.originalText) + '</div>' : '';
     if (!shown) translateFree(m);
-    return '<div class="msg ' + (mine ? 'mine' : 'theirs') + '">' +
+    const sender = !mine && conv ? conv.participants.find((p) => p.userId === m.senderId) : null;
+    const av = !mine ? '<span class="msg-avatar">' + avatarHtml(sender || { fullName: m.senderName }, m.senderName) + '</span>' : '';
+    return div + '<div class="msg-row ' + (mine ? 'mine' : 'theirs') + '">' + av +
+      '<div class="msg ' + (mine ? 'mine' : 'theirs') + '">' +
       (mine ? '' : '<div class="who">' + esc(m.senderName) + '</div>') +
       '<div>' + esc(main_text) + '</div>' + orig +
-      '<div class="time">' + esc(msgTime(m.createdAt)) + '</div></div>';
+      '<div class="time">' + esc(msgTime(m.createdAt)) + '</div></div></div>';
   }).join('');
   box.scrollTop = box.scrollHeight;
-  window.scrollTo(0, document.body.scrollHeight);
 }
 
 // 5 — Contacts: search, requests, list, new group.

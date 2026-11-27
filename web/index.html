@@ -28,6 +28,10 @@
   --mine-text: #191919; --theirs-border: #E5E5E5;
   --tab-bg: rgba(255,255,255,.97); --demo-bg: #FFFBE5;
   --tab-h: 64px;
+  /* Chat room design — set per theme by applyTheme in app.js. */
+  --chat-bg: #FFE3EC; --head-bg: #FF8FAB; --head-text: #FFFFFF;
+  --mine-bg: #FF8FAB; --theirs-bg: #FFFFFF;
+  --pattern: none; --divider-bg: rgba(0,0,0,.10); --divider-text: #FFFFFF;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -141,24 +145,48 @@ main.no-tabs { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .empty { text-align: center; color: var(--lavender-muted); padding: 36px 16px; }
 .empty .big { font-size: 40px; display: block; margin-bottom: 8px; }
 
-/* Chat view: KakaoTalk bubbles — mine yellow, theirs white. A translated
-   message reads like a normal chat message; the original sits underneath
-   it as one small grey line, not a boxed-off section. */
-#chat-messages { display: flex; flex-direction: column; gap: 10px; padding: 12px 0 8px; }
-.msg { max-width: 82%; padding: 10px 13px; border-radius: 18px; font-size: 16px; }
-.msg.mine { align-self: flex-end; background: var(--accent); color: var(--mine-text); border-bottom-right-radius: 6px; }
-.msg.theirs { align-self: flex-start; background: var(--plum-800); border: 1px solid var(--theirs-border); color: var(--lavender); border-bottom-left-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+/* Chat view — a real app screen, not a scrolling page. The room fills the
+   phone: a themed header bar stays put at the top, only the message list
+   scrolls, and the composer is pinned at the bottom. The room itself wears
+   the theme: a patterned background and coloured bubbles, the way the
+   KakaoTalk and LINE themes Angelic sent look. */
+main.chat-view { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; padding: 0; }
+main.chat-view .chat-head { flex: none; display: flex; align-items: center; gap: 10px;
+  background: var(--head-bg); color: var(--head-text);
+  padding: calc(10px + env(safe-area-inset-top)) 12px 10px; }
+main.chat-view .chat-head .back-btn { color: var(--head-text); font-size: 18px; padding: 8px 4px; }
+main.chat-view .chat-head-avatar { flex: none; }
+main.chat-view .chat-head-avatar .avatar { width: 38px; height: 38px; font-size: 15px; }
+main.chat-view .chat-head-name { flex: 1; min-width: 0; }
+main.chat-view .chat-head-name #chat-title { font-size: 18px; font-weight: 800; line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+main.chat-view .chat-head-name #chat-online { font-size: 12px; opacity: .85; }
+main.chat-view .demo-banner { flex: none; margin: 8px 12px 0; }
+#chat-messages { display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 8px;
+  flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  background-color: var(--chat-bg); background-image: var(--pattern); background-size: auto; }
+.msg-row { display: flex; gap: 8px; align-items: flex-end; }
+.msg-row.mine { justify-content: flex-end; }
+.msg-row .msg { max-width: 76%; }
+.msg-avatar { flex: none; width: 34px; height: 34px; }
+.msg-avatar .avatar { width: 34px; height: 34px; font-size: 13px; }
+.msg { padding: 10px 13px; border-radius: 18px; font-size: 16px; line-height: 1.35; }
+.msg.mine { background: var(--mine-bg); color: var(--mine-text); border-bottom-right-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.msg.theirs { background: var(--theirs-bg); border: 1px solid var(--theirs-border); color: var(--lavender); border-bottom-left-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 .msg .who { font-size: 12px; font-weight: 700; color: var(--lavender-muted); margin-bottom: 3px; }
 .msg.mine .who { color: var(--mine-text); opacity: .65; }
 .msg .orig { margin-top: 4px; font-size: 12px; color: var(--lavender-muted); }
 .msg .time { font-size: 11px; opacity: .6; margin-top: 4px; text-align: right; }
-.typing { color: var(--lavender-muted); font-size: 13px; font-style: italic; padding: 2px 4px; min-height: 20px; }
-.composer {
-  display: flex; gap: 8px; padding: 10px 0 calc(4px + env(safe-area-inset-bottom));
-  position: sticky; bottom: calc(var(--tab-h) + 8px); background: linear-gradient(180deg, transparent, var(--plum-950) 30%);
-}
+.date-div { align-self: center; background: var(--divider-bg); color: var(--divider-text);
+  font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 99px; margin: 6px 0 2px; }
+main.chat-view .typing { flex: none; color: var(--lavender-muted); font-size: 13px; font-style: italic;
+  padding: 4px 16px; min-height: 20px; background: var(--chat-bg); }
+main.chat-view .composer { flex: none; display: flex; gap: 8px;
+  padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
+  position: static; background: var(--plum-800); border-top: 1px solid var(--outline); }
 .composer input { flex: 1; border-radius: 99px; }
 .composer button { width: auto; border-radius: 99px; padding: 12px 20px; margin: 0; }
+.composer button:disabled { opacity: .55; }
 
 /* Bottom tab bar — thumb friendly, always visible on the main screens. */
 #tabs {
