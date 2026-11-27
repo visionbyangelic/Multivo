@@ -203,6 +203,11 @@ fun Route.conversationRoutes(chat: ChatService) {
                 chat.markRead(call.currentUserId(), call.uuidParameter("id"))
                 call.respond(MessageResponse("Marked as read."))
             }
+
+            post("/{id}/clear") {
+                chat.clearChat(call.currentUserId(), call.uuidParameter("id"))
+                call.respond(MessageResponse("Chat cleared."))
+            }
         }
     }
 }

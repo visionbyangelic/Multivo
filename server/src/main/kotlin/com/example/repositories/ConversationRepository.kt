@@ -169,10 +169,15 @@ class ConversationRepository {
                 """
                 $messageSelect
                 WHERE m.conversation_id = ? AND m.is_deleted = FALSE
+                  -- A cleared chat hides everything sent up to the clear.
+                  AND m.created_at > COALESCE(
+                      (SELECT p2.cleared_at FROM conversation_participants p2
+                        WHERE p2.conversation_id = m.conversation_id AND p2.user_id = ?),
+                      '-infinity'::timestamptz)
                 ORDER BY m.created_at DESC, m.id DESC
                 LIMIT ? OFFSET ?
                 """.trimIndent(),
-                viewerId, conversationId, limit, offset
+                viewerId, viewerId, conversationId, limit, offset
             ) { it.toMessage() }.reversed()
         }
 
@@ -181,6 +186,21 @@ class ConversationRepository {
             c.execute(
                 """
                 UPDATE conversation_participants SET last_read_at = CURRENT_TIMESTAMP
+                WHERE conversation_id = ? AND user_id = ?
+                """.trimIndent(),
+                conversationId, userId
+            )
+        }
+    }
+
+    /** Hides every message so far from this person's view only — the other
+        people in the conversation keep their copy, and anything sent after
+        the clear still arrives. */
+    fun clearForUser(conversationId: UUID, userId: UUID) {
+        Db.withConnection { c ->
+            c.execute(
+                """
+                UPDATE conversation_participants SET cleared_at = CURRENT_TIMESTAMP
                 WHERE conversation_id = ? AND user_id = ?
                 """.trimIndent(),
                 conversationId, userId
@@ -235,6 +255,7 @@ class ConversationRepository {
                      WHERE um.conversation_id = c.id
                        AND um.sender_id <> me.user_id
                        AND um.is_deleted = FALSE
+                       AND um.created_at > COALESCE(me.cleared_at, '-infinity'::timestamptz)
                        AND um.created_at > COALESCE(me.last_read_at, me.joined_at)) AS unread,
                    lm.id AS lm_id, lm.sender_id AS lm_sender_id, lu.full_name AS lm_sender_name,
                    lm.original_text AS lm_text, lm.original_language AS lm_language,
@@ -246,6 +267,7 @@ class ConversationRepository {
             LEFT JOIN LATERAL (
                 SELECT * FROM messages m
                 WHERE m.conversation_id = c.id AND m.is_deleted = FALSE
+                  AND m.created_at > COALESCE(me.cleared_at, '-infinity'::timestamptz)
                 ORDER BY m.created_at DESC, m.id DESC
                 LIMIT 1
             ) lm ON TRUE

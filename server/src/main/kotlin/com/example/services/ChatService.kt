@@ -74,6 +74,13 @@ class ChatService(
         io { conversations.markRead(conversationId, userId) }
     }
 
+    /** Clears the chat from this person's view only — the other people
+        keep their copy, and anything sent after still arrives. */
+    suspend fun clearChat(userId: UUID, conversationId: UUID) {
+        requireParticipant(conversationId, userId)
+        io { conversations.clearForUser(conversationId, userId) }
+    }
+
     /**
      * Saves a message, translates its text into every recipient's preferred
      * language and pushes it to everyone in the conversation in real time.

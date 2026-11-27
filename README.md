@@ -100,6 +100,7 @@ MULTIVO_LIVE_URL=http://localhost:8080 ./gradlew :app:testDebugUnitTest --tests 
 | POST | `/conversations/private`, `/conversations/groups` | start chats |
 | GET/POST | `/conversations/{id}/messages` | history (with *your* translation, and `readBy`) / send — text, or `audioData` / `imageData` (base64) / `stickerId` |
 | POST | `/conversations/{id}/read` | clear unread |
+| POST | `/conversations/{id}/clear` | clear chat for me only — hides every message so far from my view; the other people keep theirs, new messages still arrive |
 | GET/POST/DELETE | `/stories/feed`, `/stories`, `/stories/{id}` | Moments — a caption and/or photo in your language, gone after 24h |
 | GET/POST | `/notifications`, `/notifications/read-all` | notifications |
 | WS | `/ws?token=JWT` | live `new_message`, `typing_*`, `user_online/offline`, `notification` |
