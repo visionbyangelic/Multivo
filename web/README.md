@@ -42,11 +42,13 @@ same PostgreSQL database (`multivo`) as the Android app.
 
 ## Live translation, honestly
 
-The server only translates when `GOOGLE_TRANSLATE_API_KEY` is set, and
-there is no key on the live server — so a live message in Chinese would
-otherwise arrive untranslated. Until that key exists, the app translates
-in the browser with MyMemory's free service (no sign-up, short chat
-messages only). A message the server already translated is never
+The live server translates with DeepL's free API key (`DEEPL_API_KEY` is
+set on Render; the free Developer plan, no billing account), so a live
+message in Chinese, French or Korean arrives translated for the reader.
+Google's key is still supported as a fallback if DeepL's is ever removed.
+If neither key is set, the app translates in the browser with MyMemory's
+free service (no sign-up, short chat messages only). A message the server
+already translated is never
 re-translated, and if the free service is out of its daily quota the
 message just shows in its original language. The proper Google key is
 still the follow-up for the real product.
