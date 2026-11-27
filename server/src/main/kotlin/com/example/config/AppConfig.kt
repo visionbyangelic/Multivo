@@ -13,6 +13,8 @@ import org.slf4j.LoggerFactory
  * | DB_PASSWORD               | postgres                                      |
  * | JWT_SECRET                | development secret (set a real one!)          |
  * | GOOGLE_TRANSLATE_API_KEY  | (empty -> translation turned off)             |
+ * | DEEPL_API_KEY             | DeepL key, free plan (empty -> falls back   |
+ * |                           | to Google, then to translation off)         |
  */
 data class AppConfig(
     val port: Int = 8080,
@@ -23,7 +25,8 @@ data class AppConfig(
     val jwtIssuer: String = "multivo",
     val jwtAudience: String = "multivo-app",
     val jwtValidityDays: Long = 30,
-    val googleTranslateApiKey: String? = null
+    val googleTranslateApiKey: String? = null,
+    val deeplApiKey: String? = null
 ) {
     companion object {
         private const val DEV_JWT_SECRET = "multivo-development-secret-change-me"
@@ -40,7 +43,8 @@ data class AppConfig(
                 dbUser = env["DB_USER"] ?: "postgres",
                 dbPassword = env["DB_PASSWORD"] ?: "postgres",
                 jwtSecret = secret,
-                googleTranslateApiKey = env["GOOGLE_TRANSLATE_API_KEY"]?.takeIf { it.isNotBlank() }
+                googleTranslateApiKey = env["GOOGLE_TRANSLATE_API_KEY"]?.takeIf { it.isNotBlank() },
+                deeplApiKey = env["DEEPL_API_KEY"]?.takeIf { it.isNotBlank() }
             )
         }
     }

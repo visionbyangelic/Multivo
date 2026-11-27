@@ -17,6 +17,8 @@ import com.example.security.JwtConfig
 import com.example.services.AuthService
 import com.example.services.ChatService
 import com.example.services.ContactService
+import com.example.services.DeepLTranslationProvider
+import com.example.services.GoogleTranslationProvider
 import com.example.services.TranslationProvider
 import com.example.services.translationProviderFor
 import com.example.utils.ConflictException
@@ -66,13 +68,20 @@ val AppJson = Json {
 
 fun Application.module(
     config: AppConfig = AppConfig.fromEnvironment(),
-    translator: TranslationProvider = translationProviderFor(config.googleTranslateApiKey)
+    translator: TranslationProvider = translationProviderFor(config.googleTranslateApiKey, config.deeplApiKey)
 ) {
     DatabaseFactory.connect(config)
     monitor.subscribe(ApplicationStopped) { DatabaseFactory.close() }
 
     if (!translator.isEnabled) {
-        log.warn("GOOGLE_TRANSLATE_API_KEY is not set - messages will be delivered without translation.")
+        log.warn("Neither DEEPL_API_KEY nor GOOGLE_TRANSLATE_API_KEY is set - messages will be delivered without translation.")
+    } else {
+        val providerName = when (translator) {
+            is DeepLTranslationProvider -> "DeepL"
+            is GoogleTranslationProvider -> "Google"
+            else -> "unknown"
+        }
+        log.info("Translation provider: $providerName")
     }
 
     val jwt = JwtConfig(config)

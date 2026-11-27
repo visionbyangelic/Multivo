@@ -33,7 +33,9 @@ or in a terminal before running Gradle):
 | `DB_USER`                  | `postgres`                                        |
 | `DB_PASSWORD`              | `postgres`                                        |
 | `JWT_SECRET`               | any long random text (required for real use)      |
-| `GOOGLE_TRANSLATE_API_KEY` | optional – without it messages aren't translated  |
+| `GOOGLE_TRANSLATE_API_KEY` | optional – needs a Google billing account        |
+| `DEEPL_API_KEY`            | optional – DeepL free key, no billing needed;     |
+|                            | when set, DeepL translates instead of Google      |
 | `PORT`                     | `8080`                                            |
 
 ```bash
