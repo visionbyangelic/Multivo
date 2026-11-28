@@ -177,7 +177,7 @@ class ConversationRepository {
                 ORDER BY m.created_at DESC, m.id DESC
                 LIMIT ? OFFSET ?
                 """.trimIndent(),
-                viewerId, viewerId, conversationId, limit, offset
+                viewerId, conversationId, viewerId, limit, offset
             ) { it.toMessage() }.reversed()
         }
 
